@@ -4,8 +4,10 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { CheckCircle2, ChevronDown, CircleAlert, Menu, Wallet, X } from 'lucide-react';
 import { useCuotia } from './app-provider.jsx';
 import { WalletGateSkeleton } from './loading-skeletons.jsx';
+import UiIcon from './ui-icon.jsx';
 
 const navigation = [
   { href: '/savings', label: 'Savings circles', compact: 'Savings' },
@@ -106,23 +108,23 @@ export default function SiteShell({ children }) {
         aria-expanded={mobileMenuOpen}
         aria-controls="main-navigation"
         onClick={() => setMobileMenuOpen((open) => !open)}
-      ><span /><span /><span /></button>
+      ><UiIcon as={mobileMenuOpen ? X : Menu} size={20} /></button>
       <nav id="main-navigation" ref={mobileNavigationRef} className={mobileMenuOpen ? 'mobile-open' : ''} aria-label="Main navigation">{navigation.map(({ href, label, compact }) => {
         const active = pathname === href || (href !== '/' && pathname.startsWith(`${href}/`));
         return <Link key={href} aria-current={active ? 'page' : undefined} className={active ? 'is-active' : ''} href={href} onClick={() => setMobileMenuOpen(false)}><span className="nav-label-full">{label}</span><span className="nav-label-compact">{compact}</span></Link>;
       })}</nav>
       <div className="topbar-actions">{walletAddress ? <details className="wallet-menu" ref={walletMenuRef}>
-        <summary className="wallet-button connected"><span className="wallet-status-dot" aria-hidden="true" />{shortAddress(walletAddress)}<svg className="wallet-menu-chevron" aria-hidden="true" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" /></svg></summary>
+        <summary className="wallet-button connected"><span className="wallet-status-dot" aria-hidden="true" />{shortAddress(walletAddress)}<UiIcon as={ChevronDown} className="wallet-menu-chevron" size={14} /></summary>
       <div className="wallet-menu-popover"><p className="wallet-menu-network">Stellar Testnet</p><Link href="/dashboard" onClick={closeWalletMenu}>Dashboard</Link><Link href="/savings/create" onClick={closeWalletMenu}>Create a savings circle</Link><button type="button" onClick={disconnectWallet}>Disconnect wallet</button></div>
       </details> : <button className="wallet-button" disabled={walletBusy} onClick={toggleWallet}>{walletBusy ? 'Connecting…' : 'Connect wallet'}</button>}</div>
     </div></header>
-    <main className="page-main app-shell">{walletRequired && !walletReady ? <WalletGateSkeleton /> : walletRequired && !walletAddress ? <section className="page-state wallet-gate"><span className="empty-symbol">◎</span><h1>Connect your account to continue.</h1><p>The dashboard and circle creation are tied to a Stellar address. Connecting only shares your public address; every transaction still requires your signature.</p><button className="button-primary" disabled={walletBusy} onClick={() => connectWallet().catch(() => {})}>{walletBusy ? 'Connecting…' : 'Connect wallet'}</button><Link className="button-quiet" href="/savings">Back to savings circles</Link></section> : children}</main>
+    <main className="page-main app-shell">{walletRequired && !walletReady ? <WalletGateSkeleton /> : walletRequired && !walletAddress ? <section className="page-state wallet-gate"><span className="empty-symbol"><UiIcon as={Wallet} size={34} /></span><h1>Connect your account to continue.</h1><p>The dashboard and circle creation are tied to a Stellar address. Connecting only shares your public address; every transaction still requires your signature.</p><button className="button-primary" disabled={walletBusy} onClick={() => connectWallet().catch(() => {})}>{walletBusy ? 'Connecting…' : 'Connect wallet'}</button><Link className="button-quiet" href="/savings">Back to savings circles</Link></section> : children}</main>
     <footer className="site-footer"><div className="site-footer-inner app-shell"><Link className="brand footer-brand" href="/" aria-label="Cuotia home"><Image className="brand-logo" src="/brand-mark.png" alt="" width={512} height={512} /></Link><p>Stellar Testnet prototype. Do not use real funds.</p><div><Link href="/how-it-works">How it works</Link><Link href="/savings">Savings circles</Link></div></div></footer>
     {toast && <div className="toast-viewport" aria-live={toast.type === 'error' ? 'assertive' : 'polite'}>
       <div className={`toast-card toast-${toast.type}`} role={toast.type === 'error' ? 'alert' : 'status'} key={toast.id}>
-        <span className="toast-mark" aria-hidden="true">{toast.type === 'error' ? '!' : '✓'}</span>
+        <span className="toast-mark"><UiIcon as={toast.type === 'error' ? CircleAlert : CheckCircle2} size={19} /></span>
         <p>{toast.message}</p>
-        <button type="button" onClick={dismissToast} aria-label="Dismiss notification">×</button>
+        <button type="button" onClick={dismissToast} aria-label="Dismiss notification"><UiIcon as={X} size={17} /></button>
       </div>
     </div>}
   </div>;
