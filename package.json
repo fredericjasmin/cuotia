@@ -1,0 +1,21 @@
+{
+  "name": "cuotia",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "dev": "next dev --port 4173",
+    "build": "next build",
+    "start": "next start --port 4173",
+    "test": "node --test lib/cuotia-chain.test.mjs"
+  },
+  "dependencies": {
+    "@creit.tech/stellar-wallets-kit": "^2.7.1",
+    "@stellar/stellar-sdk": "^17.3.0",
+    "next": "16.4.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  }
+}

@@ -1,0 +1,84 @@
+'use client';
+
+import Link from 'next/link';
+import Image from 'next/image';
+import { usePathname } from 'next/navigation';
+import { useEffect, useRef } from 'react';
+import { useCuotia } from './app-provider.jsx';
+import { WalletGateSkeleton } from './loading-skeletons.jsx';
+
+const navigation = [
+  { href: '/savings', label: 'Savings circles', compact: 'Savings' },
+  { href: '/how-it-works', label: 'How it works', compact: 'Guide' },
+];
+
+function shortAddress(address) {
+  return address ? `${address.slice(0, 5)}…${address.slice(-5)}` : '';
+}
+
+export default function SiteShell({ children }) {
+  const pathname = usePathname();
+  const { walletAddress, walletBusy, walletReady, toast, dismissToast, connectWallet, disconnectWallet } = useCuotia();
+  const walletRequired = pathname === '/dashboard';
+  const walletMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timeout = window.setTimeout(dismissToast, 5200);
+    return () => window.clearTimeout(timeout);
+  }, [toast, dismissToast]);
+
+  useEffect(() => {
+    const menu = walletMenuRef.current;
+    if (!menu) return undefined;
+
+    function closeOnOutsideClick(event) {
+      if (menu.open && !menu.contains(event.target)) menu.open = false;
+    }
+
+    function closeOnEscape(event) {
+      if (event.key !== 'Escape' || !menu.open) return;
+      menu.open = false;
+      menu.querySelector('summary')?.focus();
+    }
+
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [walletAddress]);
+
+  async function toggleWallet() {
+    if (walletAddress) await disconnectWallet();
+    else await connectWallet().catch(() => {});
+  }
+
+  function closeWalletMenu(event) {
+    event.currentTarget.closest('details')?.removeAttribute('open');
+  }
+
+  return <div className="site-layout">
+    <header className="site-header"><div className="topbar app-shell">
+      <Link className="brand" href="/" aria-label="Cuotia home"><Image className="brand-logo" src="/brand-nav.png" alt="" width={512} height={512} /><span className="brand-label">Cuotia<span className="brand-dot">.</span></span></Link>
+      <nav aria-label="Main navigation">{navigation.map(({ href, label, compact }) => {
+        const active = pathname === href || (href !== '/' && pathname.startsWith(`${href}/`));
+        return <Link key={href} aria-current={active ? 'page' : undefined} className={active ? 'is-active' : ''} href={href}><span className="nav-label-full">{label}</span><span className="nav-label-compact">{compact}</span></Link>;
+      })}</nav>
+      <div className="topbar-actions">{walletAddress ? <details className="wallet-menu" ref={walletMenuRef}>
+        <summary className="wallet-button connected"><span className="wallet-status-dot" aria-hidden="true" />{shortAddress(walletAddress)}<svg className="wallet-menu-chevron" aria-hidden="true" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" /></svg></summary>
+      <div className="wallet-menu-popover"><p className="wallet-menu-network">Stellar Testnet</p><Link href="/dashboard" onClick={closeWalletMenu}>Dashboard</Link><Link href="/savings/create" onClick={closeWalletMenu}>Create a savings circle</Link><button type="button" onClick={disconnectWallet}>Disconnect wallet</button></div>
+      </details> : <button className="wallet-button" disabled={walletBusy} onClick={toggleWallet}>{walletBusy ? 'Connecting…' : 'Connect wallet'}</button>}</div>
+    </div></header>
+    <main className="page-main app-shell">{walletRequired && !walletReady ? <WalletGateSkeleton /> : walletRequired && !walletAddress ? <section className="page-state wallet-gate"><span className="empty-symbol">◎</span><h1>Connect your account to continue.</h1><p>The dashboard and circle creation are tied to a Stellar address. Connecting only shares your public address; every transaction still requires your signature.</p><button className="button-primary" disabled={walletBusy} onClick={() => connectWallet().catch(() => {})}>{walletBusy ? 'Connecting…' : 'Connect wallet'}</button><Link className="button-quiet" href="/savings">Back to savings circles</Link></section> : children}</main>
+    <footer className="site-footer"><div className="site-footer-inner app-shell"><Link className="brand footer-brand" href="/" aria-label="Cuotia home"><Image className="brand-logo" src="/brand-mark.png" alt="" width={512} height={512} /></Link><p>Stellar Testnet prototype. Do not use real funds.</p><div><Link href="/how-it-works">How it works</Link><Link href="/savings">Savings circles</Link></div></div></footer>
+    {toast && <div className="toast-viewport" aria-live={toast.type === 'error' ? 'assertive' : 'polite'}>
+      <div className={`toast-card toast-${toast.type}`} role={toast.type === 'error' ? 'alert' : 'status'} key={toast.id}>
+        <span className="toast-mark" aria-hidden="true">{toast.type === 'error' ? '!' : '✓'}</span>
+        <p>{toast.message}</p>
+        <button type="button" onClick={dismissToast} aria-label="Dismiss notification">×</button>
+      </div>
+    </div>}
+  </div>;
+}

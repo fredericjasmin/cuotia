@@ -1,0 +1,17 @@
+node_modules/
+.next/
+target/
+dist/
+build/
+coverage/
+.env
+.env.local
+.env.*
+!.env.example
+*.log
+.DS_Store
+*.secret
+*.key
+*.wasm
+/docs/despliegue-local.md
+/contracts/cuotia-v2/
