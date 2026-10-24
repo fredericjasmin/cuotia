@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useCuotia } from './app-provider.jsx';
 import { WalletGateSkeleton } from './loading-skeletons.jsx';
 
@@ -21,6 +21,9 @@ export default function SiteShell({ children }) {
   const { walletAddress, walletBusy, walletReady, toast, dismissToast, connectWallet, disconnectWallet } = useCuotia();
   const walletRequired = pathname === '/dashboard';
   const walletMenuRef = useRef(null);
+  const mobileMenuButtonRef = useRef(null);
+  const mobileNavigationRef = useRef(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -50,6 +53,39 @@ export default function SiteShell({ children }) {
     };
   }, [walletAddress]);
 
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return undefined;
+
+    function closeOnOutsideClick(event) {
+      if (mobileNavigationRef.current?.contains(event.target) || mobileMenuButtonRef.current?.contains(event.target)) return;
+      setMobileMenuOpen(false);
+    }
+
+    function closeOnEscape(event) {
+      if (event.key !== 'Escape') return;
+      setMobileMenuOpen(false);
+      mobileMenuButtonRef.current?.focus();
+    }
+
+    const desktopViewport = window.matchMedia('(min-width: 621px)');
+    const closeOnDesktop = () => {
+      if (desktopViewport.matches) setMobileMenuOpen(false);
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    desktopViewport.addEventListener('change', closeOnDesktop);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+      desktopViewport.removeEventListener('change', closeOnDesktop);
+    };
+  }, [mobileMenuOpen]);
+
   async function toggleWallet() {
     if (walletAddress) await disconnectWallet();
     else await connectWallet().catch(() => {});
@@ -62,9 +98,18 @@ export default function SiteShell({ children }) {
   return <div className="site-layout">
     <header className="site-header"><div className="topbar app-shell">
       <Link className="brand" href="/" aria-label="Cuotia home"><Image className="brand-logo" src="/brand-nav.png" alt="" width={512} height={512} /><span className="brand-label">Cuotia<span className="brand-dot">.</span></span></Link>
-      <nav aria-label="Main navigation">{navigation.map(({ href, label, compact }) => {
+      <button
+        ref={mobileMenuButtonRef}
+        className={`mobile-menu-toggle${mobileMenuOpen ? ' is-open' : ''}`}
+        type="button"
+        aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+        aria-expanded={mobileMenuOpen}
+        aria-controls="main-navigation"
+        onClick={() => setMobileMenuOpen((open) => !open)}
+      ><span /><span /><span /></button>
+      <nav id="main-navigation" ref={mobileNavigationRef} className={mobileMenuOpen ? 'mobile-open' : ''} aria-label="Main navigation">{navigation.map(({ href, label, compact }) => {
         const active = pathname === href || (href !== '/' && pathname.startsWith(`${href}/`));
-        return <Link key={href} aria-current={active ? 'page' : undefined} className={active ? 'is-active' : ''} href={href}><span className="nav-label-full">{label}</span><span className="nav-label-compact">{compact}</span></Link>;
+        return <Link key={href} aria-current={active ? 'page' : undefined} className={active ? 'is-active' : ''} href={href} onClick={() => setMobileMenuOpen(false)}><span className="nav-label-full">{label}</span><span className="nav-label-compact">{compact}</span></Link>;
       })}</nav>
       <div className="topbar-actions">{walletAddress ? <details className="wallet-menu" ref={walletMenuRef}>
         <summary className="wallet-button connected"><span className="wallet-status-dot" aria-hidden="true" />{shortAddress(walletAddress)}<svg className="wallet-menu-chevron" aria-hidden="true" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" /></svg></summary>
