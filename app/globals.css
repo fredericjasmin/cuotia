@@ -92,6 +92,10 @@ a { color: inherit; }
 .button-quiet { padding-left: 0; background: transparent; color: var(--muted); font-size: var(--text-label); }
 .button-quiet:hover { color: var(--ink); }
 .circle-list { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.circle-filter { display: inline-flex; gap: 6px; margin: -14px 0 26px; padding: 4px; border: 1px solid var(--line-strong); border-radius: 10px; background: #ffffff05; }
+.circle-filter button { padding: 7px 14px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: var(--text-label); font-weight: 600; transition: background .18s, color .18s; }
+.circle-filter button:hover { color: var(--cream); }
+.circle-filter button.is-active { background: #AA9BEB26; color: var(--cream); }
 .circle-pagination { display: flex; flex-direction: column; align-items: center; gap: .75rem; margin: 2rem auto 0; }
 .circle-pagination p { margin: 0; color: #b54237; }
 .circle-card { padding: 21px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: 0 13px 35px #0808082c; transition: border-color .2s, box-shadow .2s; }
@@ -147,15 +151,16 @@ a { color: inherit; }
 .button-decline { padding: 5px 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; text-decoration: underline; text-decoration-color: #FFFCF140; text-underline-offset: 3px; }
 .button-decline:hover { color: var(--cream); text-decoration-color: var(--cream); }
 .earn-decline > span { color: var(--subtle); font-size: 11px; }
-.earn-consensus { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 16px 0; padding: 16px 18px; border: 1px solid var(--line-strong); border-radius: 11px; background: #AA9BEB0b; }
-.earn-consensus-info { display: grid; min-width: 0; flex: 1; gap: 8px; }
-.earn-consensus-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 14px; }
+.earn-consensus { display: grid; gap: 10px; margin: 16px 0; padding: 16px 18px; border: 1px solid var(--line-strong); border-radius: 11px; background: #AA9BEB0b; }
+.earn-consensus-copy { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.earn-consensus-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+.earn-consensus-actions .form-help { flex: 1 1 100%; }
 .earn-consensus-heading { display: flex; min-width: 0; align-items: center; gap: 12px; }
 .earn-consensus-mark { display: grid; width: 34px; height: 34px; flex: none; place-items: center; border: 1px solid #AA9BEB70; border-radius: 50%; color: var(--lavender); }
 .earn-consensus-heading div { display: grid; gap: 2px; }
 .earn-consensus-heading strong { color: var(--ink); font-size: var(--text-label); }
 .earn-consensus-heading div span { color: var(--muted); font-size: 13px; }
-.earn-consensus.is-compact { justify-content: flex-start; margin: 14px 0 0; padding: 10px 13px; background: transparent; }
+.earn-consensus.is-compact { margin: 14px 0 0; padding: 10px 13px; background: transparent; }
 .earn-consensus.is-compact .earn-consensus-mark { width: 29px; height: 29px; }
 .earn-consensus.is-compact .earn-consensus-heading div { grid-template-columns: auto auto; align-items: baseline; column-gap: 8px; }
 .earn-consensus.is-compact .earn-consensus-heading div span { font-size: 12px; }
@@ -252,7 +257,7 @@ a { color: inherit; }
 .empty-symbol { display: grid; place-items: center; margin-bottom: 10px; color: var(--cream); }
 .page-state p { max-width: 540px; margin: 0 auto 20px; color: var(--muted); font-size: var(--text-small); }
 .page-state .button-primary, .page-state .button-secondary { margin-top: 8px; }
-.inline-note { margin: 0 0 23px; padding: 15px 18px; border-left: 3px solid var(--cream); border-radius: 4px; background: var(--surface); color: var(--muted); font-size: var(--text-small); }
+.inline-note { margin: 0 0 23px; padding: 13px 15px; border: 1px solid var(--line-strong); border-radius: 10px; background: #ffffff05; color: var(--muted); font-size: var(--text-small); }
 .inline-note a { margin-left: 5px; color: var(--cream); font-weight: 700; text-decoration-color: var(--cream); text-underline-offset: 4px; }
 .wallet-activation-note { display: grid; flex: 1 1 100%; gap: 5px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff05; color: var(--muted); font-size: var(--text-label); line-height: 1.5; overflow-wrap: anywhere; }
 .wallet-activation-note p { margin: 0; }
@@ -475,9 +480,8 @@ a { color: inherit; }
   .round-chip { align-self: flex-start; }
   .circle-controls > .button-primary, .circle-controls > .button-secondary { flex: 1 1 100%; min-height: 44px; }
   .circle-connect-prompt .wallet-connect-options > button { flex: 1 1 100%; min-height: 44px; }
-  .circle-controls > .button-consent { flex: 1 1 100%; justify-content: flex-start; }
-  .earn-consensus:not(.is-compact) { align-items: flex-start; flex-direction: column; gap: 10px; }
-  .earn-consensus-actions { width: 100%; align-items: flex-start; flex-direction: column; }
+  .earn-consensus:not(.is-compact) .button-consent { flex: 1 1 100%; min-height: 44px; }
+  .earn-consensus-actions { align-items: stretch; flex-direction: column; }
 }
 @media (max-width: 420px) {
   .app-shell { padding-right: 16px; padding-left: 16px; }

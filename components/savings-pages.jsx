@@ -101,10 +101,8 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
     <div className="progress-track" role="progressbar" aria-label="Round contributions" aria-valuenow={paidCount} aria-valuemin="0" aria-valuemax={circle.members.length}><i style={{ width: `${contributionPercent}%` }} /></div>
     <div className="circle-stats"><div><span>Contributions this round</span><b>{paidCount} / {circle.members.length}</b></div><div><span>Total contributed</span><b>{money(circle.pot)} {assetLabel}</b></div><div><span>Round deadline</span><b>{dateLabel(circle.roundDueAt)}</b></div></div>
     {circle.earnEnabled && <div className={`earn-consensus ${compact ? 'is-compact' : ''}`}>
-      <div className="earn-consensus-info">
-        <div className="earn-consensus-heading"><span className="earn-consensus-mark"><UiIcon as={TrendingUp} size={17} /></span><div><strong>Writz Earn consent</strong><span>{earnAcceptedCount} of {circle.members.length} approved{!circle.earnReady && isMember && !circle.earnAccepted[memberIndex] ? ' · yours is pending' : ''}</span></div></div>
-        {!compact && <p>{circle.earnReady ? 'Everyone approved. Contributions go to the vault; each member later claims the value their shares recover, which can rise or fall.' : 'Everyone must approve before contributions open. Approval does not move funds; each contribution is signed separately.'}</p>}
-      </div>
+      <div className="earn-consensus-heading"><span className="earn-consensus-mark"><UiIcon as={TrendingUp} size={17} /></span><div><strong>Writz Earn consent</strong><span>{earnAcceptedCount} of {circle.members.length} approved{!circle.earnReady && isMember && !circle.earnAccepted[memberIndex] ? ' · yours is pending' : ''}</span></div></div>
+      {!compact && <p className="earn-consensus-copy">{circle.earnReady ? 'Everyone approved. Contributions go to the vault; each member later claims the value their shares recover, which can rise or fall.' : 'Everyone must approve before contributions open. Approval does not move funds; each contribution is signed separately.'}</p>}
       {!compact && <div className="earn-consensus-actions">
         {circle.status === 'active' && !circle.earnReady && !walletAddress && <><p className="form-help">Connect to review and approve Writz Earn consent.</p><WalletConnectOptions compact connectWallet={onConnectBrowser} connectCavosWallet={onConnectCavos} cavosEnabled={cavosEnabled} walletBusy={walletBusy} /></>}
         {canAcceptEarn && <button className="button-consent" type="button" disabled={actionPending} onClick={() => runAction('accept_earn')}><span className="consent-check"><UiIcon as={Check} size={15} /></span><span className="consent-copy"><strong>{busy ? 'Waiting for signature…' : 'Approve Writz Earn'}</strong><small>Approval only · no funds move</small></span></button>}
@@ -130,16 +128,17 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
   </article>;
 }
 
-function SavingsCollection({ circles, loading, error, retry, busyId, ...cardProps }) {
+function SavingsCollection({ circles, loading, error, retry, busyId, emptyTitle, emptyBody, ...cardProps }) {
   if (loading) return <CircleCollectionSkeleton />;
   if (error) return <div className="page-state page-error" role="alert"><strong>Could not load savings circles.</strong><p>{error}</p><button className="button-secondary" onClick={retry}>Try again</button></div>;
-  if (!circles.length) return <div className="page-state"><span className="empty-symbol"><UiIcon as={PiggyBank} size={34} /></span><h2>No savings circles yet.</h2><p>Create one and invite your group.</p><Link className="button-primary" href="/savings/create">Create a savings circle</Link></div>;
+  if (!circles.length) return <div className="page-state"><span className="empty-symbol"><UiIcon as={PiggyBank} size={34} /></span><h2>{emptyTitle || 'No savings circles yet.'}</h2><p>{emptyBody || 'Create one and invite your group.'}</p><Link className="button-primary" href="/savings/create">Create a savings circle</Link></div>;
   return <div className="circle-list">{circles.map((circle) => <SavingsCircleCard key={circle.id} circle={circle} compact busy={busyId === circle.id} actionPending={busyId !== null} {...cardProps} />)}</div>;
 }
 
 export function SavingsCirclesPage() {
   const { walletAddress, walletProvider, connectWallet, connectCavosWallet, cavosEnabled, walletBusy, showToast } = useCuotia();
   const [circles, setCircles] = useState([]);
+  const [circleFilter, setCircleFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState(null);
@@ -195,8 +194,12 @@ export function SavingsCirclesPage() {
     } catch (cause) { showToast(cause.message || 'Could not complete this action.', 'error'); throw cause; }
     finally { actionLock.current = false; setBusyId(null); }
   }
+  const activeFilter = walletAddress ? circleFilter : 'all';
+  const mineCount = walletAddress ? circles.filter((circle) => circle.members.some((member) => member.address === walletAddress)).length : 0;
+  const visibleCircles = activeFilter === 'mine' ? circles.filter((circle) => circle.members.some((member) => member.address === walletAddress)) : circles;
   return <div className="content-page"><div className="page-heading"><div><h1>Savings circles</h1><p>Everyone contributes each period. After all rounds, each member claims their own contributions.</p></div><Link className="button-primary" href="/savings/create"><UiIcon as={Plus} size={17} /> Create a savings circle</Link></div>
-    {!configured ? <SetupNote /> : <><SavingsCollection circles={circles} loading={loading} error={error} retry={refresh} walletAddress={walletAddress} walletProvider={walletProvider} busyId={busyId} onAction={(circleId, kind) => act(circleId, kind)} onConnectBrowser={connectWallet} onConnectCavos={connectCavosWallet} cavosEnabled={cavosEnabled} walletBusy={walletBusy} onTrustlineSetup={trustlineSetup} showToast={showToast} />{nextStartId !== null && !loading && !error && <div className="circle-pagination">{moreError && <p role="alert">{moreError}</p>}<button className="button-secondary" type="button" disabled={loadingMore} onClick={loadMore}>{loadingMore ? 'Loading…' : moreError ? 'Try again' : 'Load more savings circles'}</button></div>}</>}
+    {walletAddress && <div className="circle-filter" role="group" aria-label="Filter savings circles"><button type="button" className={activeFilter === 'all' ? 'is-active' : ''} aria-pressed={activeFilter === 'all'} onClick={() => setCircleFilter('all')}>All circles</button><button type="button" className={activeFilter === 'mine' ? 'is-active' : ''} aria-pressed={activeFilter === 'mine'} onClick={() => setCircleFilter('mine')}>My circles ({mineCount})</button></div>}
+    {!configured ? <SetupNote /> : <><SavingsCollection circles={visibleCircles} loading={loading} error={error} retry={refresh} emptyTitle={activeFilter === 'mine' ? 'You are not in any circles yet.' : undefined} emptyBody={activeFilter === 'mine' ? 'A circle shows up here when your wallet address is added as a member.' : undefined} walletAddress={walletAddress} walletProvider={walletProvider} busyId={busyId} onAction={(circleId, kind) => act(circleId, kind)} onConnectBrowser={connectWallet} onConnectCavos={connectCavosWallet} cavosEnabled={cavosEnabled} walletBusy={walletBusy} onTrustlineSetup={trustlineSetup} showToast={showToast} />{nextStartId !== null && !loading && !error && <div className="circle-pagination">{moreError && <p role="alert">{moreError}</p>}<button className="button-secondary" type="button" disabled={loadingMore} onClick={loadMore}>{loadingMore ? 'Loading…' : moreError ? 'Try again' : 'Load more savings circles'}</button></div>}</>}
   </div>;
 }
 
