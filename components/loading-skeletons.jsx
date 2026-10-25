@@ -36,3 +36,7 @@ export function WalletGateSkeleton() {
     <SkeletonBlock className="skeleton-gate-icon" /><SkeletonBlock className="skeleton-gate-title" /><SkeletonBlock className="skeleton-gate-copy" /><SkeletonBlock className="skeleton-gate-action" />
   </div>;
 }
+
+export function WalletButtonSkeleton() {
+  return <span className="wallet-button-skeleton skeleton-block" role="status" aria-label="Restoring wallet connection" />;
+}

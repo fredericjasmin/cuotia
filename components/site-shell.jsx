@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, ChevronDown, CircleAlert, Menu, Wallet, X } from 'lucide-react';
 import { useCuotia } from './app-provider.jsx';
-import { WalletGateSkeleton } from './loading-skeletons.jsx';
+import { WalletButtonSkeleton, WalletGateSkeleton } from './loading-skeletons.jsx';
 import UiIcon from './ui-icon.jsx';
 
 const navigation = [
@@ -20,7 +20,7 @@ function shortAddress(address) {
 
 export default function SiteShell({ children }) {
   const pathname = usePathname();
-  const { walletAddress, walletBusy, walletReady, toast, dismissToast, connectWallet, disconnectWallet } = useCuotia();
+  const { walletAddress, walletBusy, walletReady, toast, dismissToast, connectWallet, connectCavosWallet, cavosEnabled, disconnectWallet } = useCuotia();
   const walletRequired = pathname === '/dashboard';
   const walletMenuRef = useRef(null);
   const mobileMenuButtonRef = useRef(null);
@@ -113,12 +113,18 @@ export default function SiteShell({ children }) {
         const active = pathname === href || (href !== '/' && pathname.startsWith(`${href}/`));
         return <Link key={href} aria-current={active ? 'page' : undefined} className={active ? 'is-active' : ''} href={href} onClick={() => setMobileMenuOpen(false)}><span className="nav-label-full">{label}</span><span className="nav-label-compact">{compact}</span></Link>;
       })}</nav>
-      <div className="topbar-actions">{walletAddress ? <details className="wallet-menu" ref={walletMenuRef}>
+      <div className="topbar-actions">{!walletReady ? <WalletButtonSkeleton /> : walletAddress ? <details className="wallet-menu" ref={walletMenuRef}>
         <summary className="wallet-button connected"><span className="wallet-status-dot" aria-hidden="true" />{shortAddress(walletAddress)}<UiIcon as={ChevronDown} className="wallet-menu-chevron" size={14} /></summary>
       <div className="wallet-menu-popover"><p className="wallet-menu-network">Stellar Testnet</p><Link href="/dashboard" onClick={closeWalletMenu}>Dashboard</Link><Link href="/savings/create" onClick={closeWalletMenu}>Create a savings circle</Link><button type="button" onClick={disconnectWallet}>Disconnect wallet</button></div>
-      </details> : <button className="wallet-button" disabled={walletBusy} onClick={toggleWallet}>{walletBusy ? 'Connecting…' : 'Connect wallet'}</button>}</div>
+      </details> : <details className="wallet-menu connect-wallet-menu" ref={walletMenuRef}>
+        <summary className="wallet-button">{walletBusy ? 'Connecting…' : 'Connect wallet'}<UiIcon as={ChevronDown} className="wallet-menu-chevron" size={14} /></summary>
+        <div className="wallet-menu-popover">
+          <button type="button" disabled={walletBusy} onClick={(event) => { closeWalletMenu(event); toggleWallet(); }}>Browser wallet</button>
+          <button type="button" disabled={walletBusy || !cavosEnabled} onClick={(event) => { closeWalletMenu(event); connectCavosWallet().catch(() => {}); }}>Email or social login</button>
+        </div>
+      </details>}</div>
     </div></header>
-    <main className="page-main app-shell">{walletRequired && !walletReady ? <WalletGateSkeleton /> : walletRequired && !walletAddress ? <section className="page-state wallet-gate"><span className="empty-symbol"><UiIcon as={Wallet} size={34} /></span><h1>Connect your account to continue.</h1><p>The dashboard and circle creation are tied to a Stellar address. Connecting only shares your public address; every transaction still requires your signature.</p><button className="button-primary" disabled={walletBusy} onClick={() => connectWallet().catch(() => {})}>{walletBusy ? 'Connecting…' : 'Connect wallet'}</button><Link className="button-quiet" href="/savings">Back to savings circles</Link></section> : children}</main>
+    <main className="page-main app-shell">{walletRequired && !walletReady ? <WalletGateSkeleton /> : walletRequired && !walletAddress ? <section className="page-state wallet-gate"><span className="empty-symbol"><UiIcon as={Wallet} size={34} /></span><h1>Connect your account to continue.</h1><p>The dashboard and circle creation are tied to a Stellar address. Connecting only shares your public address; transactions require your approval.</p><button className="button-primary" disabled={walletBusy} onClick={() => connectWallet().catch(() => {})}>{walletBusy ? 'Connecting…' : 'Browser wallet'}</button>{cavosEnabled && <button className="button-secondary" disabled={walletBusy} onClick={() => connectCavosWallet().catch(() => {})}>Email or social login</button>}<Link className="button-quiet" href="/savings">Back to savings circles</Link></section> : children}</main>
     <footer className="site-footer"><div className="site-footer-inner app-shell"><Link className="brand footer-brand" href="/" aria-label="Cuotia home"><Image className="brand-logo" src="/brand-mark.png" alt="" width={512} height={512} /></Link><p>Stellar Testnet prototype. Do not use real funds.</p><div><Link href="/how-it-works">How it works</Link><Link href="/savings">Savings circles</Link></div></div></footer>
     {toast && <div className="toast-viewport" aria-live={toast.type === 'error' ? 'assertive' : 'polite'}>
       <div className={`toast-card toast-${toast.type}`} role={toast.type === 'error' ? 'alert' : 'status'} key={toast.id}>

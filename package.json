@@ -12,11 +12,27 @@
     "test": "node --test lib/cuotia-chain.test.mjs"
   },
   "dependencies": {
+    "@cavos/kit": "^0.4.4",
     "@creit.tech/stellar-wallets-kit": "^2.7.1",
     "@stellar/stellar-sdk": "^17.3.0",
     "lucide-react": "^1.61.0",
     "next": "16.4.3",
     "react": "19.3.1",
     "react-dom": "19.3.1"
+  },
+  "overrides": {
+    "@near-js/utils": {
+      "bs58": "4.0.1"
+    },
+    "jayson": {
+      "stream-json": "3.7.0",
+      "uuid": "11.1.1"
+    }
+  },
+  "allowScripts": {
+    "@reown/appkit@1.8.21": true,
+    "bufferutil": false,
+    "secp256k1": false,
+    "utf-8-validate": false
   }
 }
