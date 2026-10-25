@@ -14,7 +14,9 @@ import {
   getSavingsCircleActivity,
   getSavingsCircle,
   listSavingsCircles,
+  readWritzAssetsPerReferenceShare,
   setupUsdcTrustline,
+  writzSharesToUsdc,
 } from '../lib/cuotia-chain.mjs';
 import { isChainConfigured } from '../lib/chain-config.mjs';
 import { useCuotia } from './app-provider.jsx';
@@ -58,12 +60,19 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
   const [now, setNow] = useState(0);
   const [trustlineSetupRequired, setTrustlineSetupRequired] = useState(false);
   const [trustlineBusy, setTrustlineBusy] = useState(false);
+  const [writzRate, setWritzRate] = useState(null);
   const trustlineLock = useRef(false);
   useEffect(() => {
     setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => {
+    let active = true;
+    if (!circle.earnEnabled || !circle.earnShares?.some((shares) => Number(shares) > 0)) { setWritzRate(null); return undefined; }
+    readWritzAssetsPerReferenceShare().then((rate) => { if (active) setWritzRate(rate); }).catch(() => {});
+    return () => { active = false; };
+  }, [circle.earnEnabled, circle.earnShares]);
   const memberIndex = circle.members.findIndex((member) => member.address === walletAddress);
   const isMember = memberIndex >= 0;
   const myContribution = circle.contributions[memberIndex];
@@ -76,6 +85,8 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
   const canCancel = circle.status === 'active' && !allPaid && expired && !(circle.earnEnabled && circle.pot === 0);
   const canContribute = circle.status === 'active' && isMember && !myContribution?.paid && !expired && circle.earnReady;
   const earnAcceptedCount = circle.earnAccepted.filter(Boolean).length;
+  const totalVaultValue = writzRate ? circle.earnShares.reduce((sum, shares) => sum + writzSharesToUsdc(shares, writzRate), 0n) : null;
+  const vaultDeltaPercent = totalVaultValue !== null && circle.pot > 0 ? ((Number(totalVaultValue) / 10_000_000) - circle.pot) / circle.pot * 100 : null;
   const canAcceptEarn = circle.status === 'active' && circle.earnEnabled && isMember && !circle.earnAccepted[memberIndex] && circle.pot === 0;
   const canCancelUnstarted = circle.status === 'active' && circle.earnEnabled && isMember && circle.pot === 0;
   const assetLabel = circle.earnEnabled ? 'Blend USDC' : 'Circle USDC';
@@ -99,7 +110,7 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
   return <article className="circle-card savings-card">
     <div className="circle-heading"><div><span className="circle-meta">Stellar Testnet · {circle.earnEnabled ? 'Writz Earn · Blend USDC' : 'Circle USDC'} · Savings circle</span><h3><Link href={`/savings/${circle.id}`}>{circle.name}</Link></h3><p>{circle.members.length} members <span>·</span> {frequencyLabel(circle.frequency)} <span>·</span> {circle.roundsTotal} rounds <span>·</span> {money(circle.contribution)} {assetLabel} per member</p>{circle.earnEnabled && !compact && <p className="form-help">Writz Earn’s vault currently uses Blend Testnet USDC underneath.</p>}</div><span className="round-chip">{circle.status === 'active' ? `Round ${circle.round + 1} / ${circle.roundsTotal}` : circle.status === 'complete' ? 'Complete' : circle.status === 'cancelled' ? 'Cancelled' : 'Status unavailable'}</span></div>
     <div className="progress-track" role="progressbar" aria-label="Round contributions" aria-valuenow={paidCount} aria-valuemin="0" aria-valuemax={circle.members.length}><i style={{ width: `${contributionPercent}%` }} /></div>
-    <div className="circle-stats"><div><span>Contributions this round</span><b>{paidCount} / {circle.members.length}</b></div><div><span>Total contributed</span><b>{money(circle.pot)} {assetLabel}</b></div><div><span>Round deadline</span><b>{dateLabel(circle.roundDueAt)}</b></div></div>
+    <div className="circle-stats"><div><span>Contributions this round</span><b>{paidCount} / {circle.members.length}</b></div><div><span>Total contributed</span><b>{money(circle.pot)} {assetLabel}</b></div>{circle.earnEnabled && <div><span>Vault value today{vaultDeltaPercent !== null ? ` (${vaultDeltaPercent >= 0 ? '+' : ''}${vaultDeltaPercent.toFixed(2)}% vs contributed)` : ''}</span><b>{totalVaultValue !== null ? `${money(Number(totalVaultValue) / 10_000_000)} Blend USDC` : '—'}</b></div>}<div><span>Round deadline</span><b>{dateLabel(circle.roundDueAt)}</b></div></div>
     {circle.earnEnabled && <div className={`earn-consensus ${compact ? 'is-compact' : ''}`}>
       <div className="earn-consensus-heading"><span className="earn-consensus-mark"><UiIcon as={TrendingUp} size={17} /></span><div><strong>Writz Earn consent</strong><span>{earnAcceptedCount} of {circle.members.length} approved{!circle.earnReady && isMember && !circle.earnAccepted[memberIndex] ? ' · yours is pending' : ''}</span></div></div>
       {!compact && <p className="earn-consensus-copy">{circle.earnReady ? 'Everyone approved. Contributions go to the vault; each member later claims the value their shares recover, which can rise or fall.' : 'Everyone must approve before contributions open. Approval does not move funds; each contribution is signed separately.'}</p>}
@@ -111,7 +122,7 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
       {!compact && canAcceptEarn && <WalletActivationNote walletAddress={walletAddress} walletProvider={walletProvider} earnApproval />}
     </div>}
     {!compact && circle.status === 'active' && <p className={`circle-due${expired && !allPaid ? ' is-overdue' : ''}`}>{allPaid && circle.round + 1 < circle.roundsTotal ? `All members paid. Next round can open after ${dateLabel(circle.roundDueAt)}.` : `If this round is still incomplete after ${dateLabel(deadline)}, a member can cancel it manually. It will not cancel automatically.`}</p>}
-    {!compact && <ul className="member-status-list" aria-label="Member status">{circle.members.map((member, index) => <li key={member.address}><span className={`member-status-dot ${circle.contributions[index]?.paid ? 'is-paid' : ''}`} /><span className="member-status-name">{member.name}{member.address === walletAddress ? ' · you' : ''}</span><span className="member-status-address">{shortAddress(member.address)}</span><span className="member-status-label">{circle.earnEnabled && !circle.earnAccepted[index] ? 'Writz consent pending · ' : ''}{money(circle.contributions[index]?.total)} {assetLabel} · {circle.contributions[index]?.claimed ? 'Claimed' : circle.contributions[index]?.paid ? 'Paid this round' : 'Pending'}</span></li>)}</ul>}
+    {!compact && <ul className="member-status-list" aria-label="Member status">{circle.members.map((member, index) => <li key={member.address}><span className={`member-status-dot ${circle.contributions[index]?.paid ? 'is-paid' : ''}`} /><span className="member-status-name">{member.name}{member.address === walletAddress ? ' · you' : ''}</span><span className="member-status-address">{shortAddress(member.address)}</span><span className="member-status-label">{circle.earnEnabled && !circle.earnAccepted[index] ? 'Writz consent pending · ' : ''}{money(circle.contributions[index]?.total)} {assetLabel} · {circle.contributions[index]?.claimed ? 'Claimed' : circle.contributions[index]?.paid ? 'Paid this round' : 'Pending'}{circle.earnEnabled && writzRate !== null && Number(circle.earnShares?.[index]) > 0 ? ` · now ${money(Number(writzSharesToUsdc(circle.earnShares[index], writzRate)) / 10_000_000)} in vault` : ''}</span></li>)}</ul>}
     <div className="circle-controls">
       {!walletAddress && !circle.earnEnabled && <div className="circle-connect-prompt"><span>Connect to check your membership</span><WalletConnectOptions compact connectWallet={onConnectBrowser} connectCavosWallet={onConnectCavos} cavosEnabled={cavosEnabled} walletBusy={walletBusy} /></div>}
       {walletAddress && !isMember && <span className="complete-label">Your wallet is not a member of this circle.</span>}
