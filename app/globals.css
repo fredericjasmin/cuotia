@@ -339,12 +339,12 @@ a { color: inherit; }
 .earn-details h3 { margin: 22px 0 8px; font-size: 21px; line-height: 1.25; }
 .earn-details p { margin: 0; color: var(--muted); font-size: var(--text-small); }
 .earn-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; }
-.earn-choice { display: grid; gap: 10px; margin: 18px 0; padding: 18px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); }
-.earn-choice > label { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
+.earn-choice { display: grid; gap: 8px; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); }
+.earn-choice > label { display: grid; grid-template-columns: 18px 1fr; gap: 10px; cursor: pointer; }
 .earn-choice input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--cream); }
-.earn-choice label span { display: grid; gap: 5px; }
-.earn-choice label small, .earn-choice > p { color: var(--muted); font-size: var(--text-small); }
-.earn-choice > p { margin: 0 0 0 30px; }
+.earn-choice label span { display: grid; gap: 3px; }
+.earn-choice label small { color: var(--muted); font-size: var(--text-small); }
+.earn-choice > p { margin: 0 0 0 28px; color: var(--muted); font-size: var(--text-small); line-height: 1.55; }
 .nav-label-compact { display: none; }
 .home-next { display: flex; justify-content: space-between; align-items: end; gap: 25px; padding: 34px 0 0; border-top: 1px solid var(--line); }
 .home-next h2 { max-width: 600px; margin: 0; font-size: var(--text-heading); font-weight: 800; line-height: 1.13; letter-spacing: -1.5px; }
