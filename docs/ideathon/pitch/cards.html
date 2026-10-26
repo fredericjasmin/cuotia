@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Cuotia — Pitch / Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --cream: #FFFCF1;
+    --muted: rgba(255, 252, 241, 0.72);
+    --subtle: rgba(255, 252, 241, 0.45);
+    --canvas: #000000;
+    --surface: rgba(255, 252, 241, 0.05);
+    --line: rgba(255, 252, 241, 0.14);
+    --lavender: #AA9BEB;
+    --yellow: #FFDD1C;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: var(--canvas); color: var(--cream); font-family: 'Poppins', sans-serif; overflow: hidden; }
+
+  .card {
+    position: absolute; inset: 0;
+    display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+  }
+  .card.is-active { display: flex; }
+
+  .brush { position: absolute; pointer-events: none; filter: drop-shadow(0 10px 8px rgba(0,0,0,0.55)); }
+  .brush-lavender {
+    background: repeating-linear-gradient(112deg, var(--lavender) 0 23px, rgba(0,0,0,0.11) 23px 26px, var(--lavender) 26px 43px);
+    clip-path: polygon(4% 23%, 19% 11%, 35% 21%, 51% 3%, 66% 17%, 82% 6%, 100% 24%, 95% 49%, 100% 73%, 78% 80%, 65% 99%, 46% 79%, 28% 92%, 17% 67%, 0 54%);
+  }
+  .brush-yellow {
+    background: repeating-linear-gradient(108deg, var(--yellow) 0 22px, rgba(0,0,0,0.09) 22px 25px, var(--yellow) 25px 41px);
+    clip-path: polygon(0 28%, 13% 12%, 28% 25%, 43% 3%, 59% 19%, 75% 6%, 100% 28%, 94% 51%, 100% 73%, 78% 68%, 62% 96%, 45% 72%, 27% 89%, 16% 63%, 1% 75%);
+  }
+  .brush-cream {
+    background: repeating-linear-gradient(100deg, var(--cream) 0 24px, rgba(0,0,0,0.08) 24px 27px, var(--cream) 27px 45px);
+    clip-path: polygon(0 33%, 13% 4%, 29% 27%, 46% 2%, 62% 18%, 80% 5%, 100% 29%, 92% 55%, 100% 78%, 77% 70%, 61% 99%, 43% 74%, 25% 92%, 13% 65%, 0 84%);
+  }
+
+  .coin {
+    width: clamp(150px, 13vw, 200px); height: auto; margin-bottom: 5vh;
+    filter: drop-shadow(0 14px 20px rgba(0,0,0,0.6));
+  }
+  h1 { font-size: clamp(90px, 16vw, 240px); font-weight: 800; line-height: 1; letter-spacing: -0.03em; }
+  .rule { width: 90px; height: 6px; background: var(--yellow); border-radius: 3px; margin: 4.5vh 0; }
+  .rule.is-lav { background: var(--lavender); }
+  .meta { font-size: clamp(15px, 1.5vw, 20px); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+
+  #card-pitch .brush-yellow { top: 8%; left: 4%; width: 34%; height: 15%; transform: rotate(-8deg); }
+  #card-pitch .brush-lavender { bottom: 10%; right: 5%; width: 36%; height: 15%; transform: rotate(8deg); }
+
+  #card-demo .brush-lavender { top: 8%; right: 4%; width: 34%; height: 15%; transform: rotate(9deg); }
+  #card-demo .brush-yellow { bottom: 10%; left: 5%; width: 36%; height: 15%; transform: rotate(-7deg); }
+  #card-demo .brush-cream { top: 44%; left: 2%; width: 26%; height: 12%; transform: rotate(6deg); opacity: 0.8; }
+</style>
+</head>
+<body>
+
+<section class="card" id="card-pitch">
+  <div class="brush brush-yellow"></div>
+  <div class="brush brush-lavender"></div>
+  <img class="coin" src="brand-coin.png" alt="Cuotia" />
+  <h1>Pitch</h1>
+  <div class="rule"></div>
+  <p class="meta">Cuotia · Pura Vida Ideathon</p>
+</section>
+
+<section class="card" id="card-demo">
+  <div class="brush brush-lavender"></div>
+  <div class="brush brush-yellow"></div>
+  <div class="brush brush-cream"></div>
+  <img class="coin" src="brand-coin.png" alt="Cuotia" />
+  <h1>Demo</h1>
+  <div class="rule is-lav"></div>
+  <p class="meta">Cuotia en Stellar Testnet</p>
+</section>
+
+<script>
+  const which = new URLSearchParams(window.location.search).get('card') || 'pitch';
+  const element = document.getElementById('card-' + which) || document.getElementById('card-pitch');
+  element.classList.add('is-active');
+</script>
+</body>
+</html>
