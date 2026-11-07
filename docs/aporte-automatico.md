@@ -40,7 +40,7 @@ La cuenta del job (`CUOTIA_KEEPER_SECRET`) **solo paga comisiones** y no guarda 
 Límites por ejecución:
 - 25 transacciones enviadas;
 - 300 simulaciones;
-- 45 segundos, por debajo del límite de 60 s de Vercel.
+- 25 segundos, por debajo del tiempo de espera de 30 s de cron-job.org (y del límite de 60 s de Vercel).
 
 Además, cada ejecución arranca desde un círculo al azar y solo toca círculos con los USDC de la app donde alguien activó el aporte automático.
 
@@ -84,6 +84,6 @@ Respuestas:
    El segundo comando muestra el secreto, que va en `CUOTIA_KEEPER_SECRET`.
 
 4. Definir `AUTO_PAY_CRON_KEY` con un valor aleatorio, por ejemplo `openssl rand -hex 32`.
-5. En cron-job.org, crear un trabajo **cada hora**:
+5. En cron-job.org, crear un trabajo **cada hora** (`0 * * * *`, tiempo de espera 30 s):
    - método `POST` a `https://<dominio>/api/auto-pay`;
    - header `x-cron-key: <AUTO_PAY_CRON_KEY>`.
