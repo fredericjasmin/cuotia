@@ -14,13 +14,14 @@ import {
   createSavingsCircle,
   getSavingsCircleActivity,
   readAutoPayGrant,
+  readUsdcBalance,
   getSavingsCircle,
   listSavingsCircles,
   readWritzAssetsPerReferenceShare,
   setupUsdcTrustline,
   writzSharesToUsdc,
 } from '../lib/cuotia-chain.mjs';
-import { isChainConfigured } from '../lib/chain-config.mjs';
+import { getChainConfiguration, isChainConfigured } from '../lib/chain-config.mjs';
 import { useCuotia } from './app-provider.jsx';
 import { useI18n } from './i18n-provider.jsx';
 import { ActivitySkeleton, CircleCollectionSkeleton, CircleDetailSkeleton } from './loading-skeletons.jsx';
@@ -119,6 +120,23 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
   // Lets a member release what was still authorized once the circle ended or was cancelled.
   const canDisableEndedAutoPay = circle.status !== 'active' && myAutoPay;
   const [autoPayGrant, setAutoPayGrant] = useState(null);
+  const [autoPayBalance, setAutoPayBalance] = useState(null);
+  const needsNextContribution = canToggleAutoPay && myAutoPay && myContribution && !myContribution.paid && !expired;
+  useEffect(() => {
+    // With automatic contribution on, warn early if the next collection would fail.
+    let active = true;
+    if (compact || !needsNextContribution || !walletAddress || !circle.token) { setAutoPayBalance(null); return undefined; }
+    const { rpcUrl, networkPassphrase } = getChainConfiguration();
+    readUsdcBalance(walletAddress, circle.token, rpcUrl, networkPassphrase)
+      .then((balance) => { if (active) setAutoPayBalance(Number(balance) / 10_000_000); })
+      .catch((cause) => {
+        if (!active) return;
+        setAutoPayBalance(null);
+        if (cause?.code === 'USDC_TRUSTLINE_REQUIRED') setTrustlineSetupRequired(true);
+      });
+    return () => { active = false; };
+  }, [compact, needsNextContribution, walletAddress, circle.token, circle.round, paidCount]);
+  const autoPayLowBalance = autoPayBalance !== null && autoPayBalance < circle.contribution;
   useEffect(() => {
     let active = true;
     if (compact || !myAutoPay || !walletAddress || !circle.token) { setAutoPayGrant(null); return undefined; }
@@ -180,7 +198,8 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
           : autoPayExpiringSoon
             ? <p className="auto-pay-alert">{t('auto.expiringSoon', { date: grantDate })}</p>
             : grantDate && <p className="form-help">{t('auto.validUntil', { date: grantDate })}</p>)}
-        {canToggleAutoPay && myAutoPay && !autoPayGrant?.expired && !myContribution?.paid && !expired && <p className="form-help">{t('auto.pendingCollection')}</p>}
+        {autoPayLowBalance && <p className="auto-pay-alert" role="alert">{t('auto.lowBalance', { balance: money(autoPayBalance), amount: money(circle.contribution), asset: assetLabel })}</p>}
+        {canToggleAutoPay && myAutoPay && !autoPayGrant?.expired && !autoPayLowBalance && !myContribution?.paid && !expired && <p className="form-help">{t('auto.pendingCollection')}</p>}
       </div>
       <div className="auto-pay-actions">
         {canToggleAutoPay && myAutoPay && (autoPayGrant?.expired || autoPayExpiringSoon) && <button className="button-primary" type="button" disabled={actionPending} onClick={() => runAction('auto_pay_renew')}>{busy ? waiting : t('auto.renew')}</button>}
