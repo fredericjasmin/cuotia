@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, ArrowUpRight, Check, CircleAlert, ExternalLink, PiggyBank, Plus, TrendingUp, Wallet, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ArrowUpRight, Check, CircleAlert, ExternalLink, MessageCircle, PiggyBank, Plus, TrendingUp, Wallet, X } from 'lucide-react';
 import {
   advanceSavingsCircleRound,
   acceptSavingsCircleEarn,
@@ -148,6 +148,14 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
   const canAcceptEarn = circle.status === 'active' && circle.earnEnabled && isMember && !circle.earnAccepted[memberIndex] && circle.pot === 0;
   const canCancelUnstarted = circle.status === 'active' && circle.earnEnabled && isMember && circle.pot === 0;
   const assetLabel = circle.earnEnabled ? 'Blend USDC' : 'Circle USDC';
+  const [shareUrl, setShareUrl] = useState('');
+  useEffect(() => {
+    // Built after mount: the link uses the current site address (localhost, preview or production).
+    if (compact || circle.status !== 'active') { setShareUrl(''); return; }
+    const circleUrl = `${window.location.origin}/savings/${circle.id}`;
+    const message = t('share.message', { name: circle.name, amount: money(circle.contribution), asset: assetLabel, frequency: frequencyLabel(circle.frequency).toLowerCase(), rounds: circle.roundsTotal, url: circleUrl });
+    setShareUrl(`https://wa.me/?text=${encodeURIComponent(message)}`);
+  }, [compact, circle.status, circle.id, circle.name, circle.contribution, circle.frequency, circle.roundsTotal, assetLabel, t]);
   const contributionPercent = Math.round((paidCount / circle.members.length) * 100);
   const waiting = t('common.waitingSignature');
   const roundChip = circle.status === 'active'
@@ -175,7 +183,7 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
   }
 
   return <article className="circle-card savings-card">
-    <div className="circle-heading"><div><span className="circle-meta">{t('card.meta', { asset: circle.earnEnabled ? 'Writz Earn · Blend USDC' : 'Circle USDC' })}</span><h3><Link href={`/savings/${circle.id}`}>{circle.name}</Link></h3><p>{t('card.members', { count: circle.members.length })} <span>·</span> {frequencyLabel(circle.frequency)} <span>·</span> {t('card.rounds', { count: circle.roundsTotal })} <span>·</span> {t('card.perMember', { amount: money(circle.contribution), asset: assetLabel })}</p>{circle.earnEnabled && !compact && <p className="form-help">{t('card.blendNote')}</p>}</div><span className="round-chip">{roundChip}</span></div>
+    <div className="circle-heading"><div><h3><Link href={`/savings/${circle.id}`}>{circle.name}</Link></h3><p>{t('card.members', { count: circle.members.length })} <span>·</span> {frequencyLabel(circle.frequency)} <span>·</span> {t('card.rounds', { count: circle.roundsTotal })} <span>·</span> {t('card.perMember', { amount: money(circle.contribution), asset: assetLabel })}</p>{circle.earnEnabled && !compact && <p className="form-help">{t('card.blendNote')}</p>}</div><span className="round-chip">{roundChip}</span></div>
     <div className="progress-track" role="progressbar" aria-label={t('card.progressAria')} aria-valuenow={paidCount} aria-valuemin="0" aria-valuemax={circle.members.length}><i style={{ width: `${contributionPercent}%` }} /></div>
     <div className="circle-stats"><div><span>{t('card.contributionsThisRound')}</span><b>{paidCount} / {circle.members.length}</b></div><div><span>{t('card.totalContributed')}</span><b>{money(circle.pot)} {assetLabel}</b></div>{circle.earnEnabled && <div><span>{t('card.vaultValue')}{vaultDelta}</span><b>{totalVaultValue !== null ? `${preciseMoney(Number(totalVaultValue) / 10_000_000)} Blend USDC` : '—'}</b></div>}<div><span>{t('card.deadline')}</span><b>{dateLabel(circle.roundDueAt)}</b></div></div>
     {circle.earnEnabled && <div className={`earn-consensus ${compact ? 'is-compact' : ''}`}>
@@ -217,6 +225,7 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
       {canClaim && <button className="button-primary" disabled={actionPending} onClick={() => runAction('claim')}>{busy ? waiting : circle.earnEnabled ? t('card.claimWritz') : t('card.claim', { amount: money(myContribution.total) })} <UiIcon as={ArrowUpRight} size={16} /></button>}
       {trustlineSetupRequired && <div className="inline-note trustline-setup-note" role="status"><p>{t('card.trustlineNote', { asset: assetLabel })}</p>{walletProvider !== 'cavos' && walletAddress && <a href={`https://friendbot.stellar.org/?addr=${encodeURIComponent(walletAddress)}`} target="_blank" rel="noreferrer">{t('activation.friendbot')} <UiIcon as={ExternalLink} size={14} /></a>}<button className="button-secondary" type="button" disabled={actionPending || trustlineBusy} onClick={setupTrustline}>{trustlineBusy ? waiting : t('card.authorize', { asset: assetLabel })}</button><a href={circle.earnEnabled ? 'https://testnet.blend.capital' : 'https://faucet.circle.com/'} target="_blank" rel="noreferrer">{t('card.getAsset', { asset: assetLabel })} <UiIcon as={ExternalLink} size={14} /></a></div>}
       {isMember && myContribution?.claimed && <span className="complete-label"><UiIcon as={Check} size={15} /> {t('card.claimedDone')}</span>}
+      {shareUrl && <a className="button-quiet share-whatsapp" href={shareUrl} target="_blank" rel="noreferrer" title={t('share.note')}><UiIcon as={MessageCircle} size={16} /> {t('share.whatsapp')}</a>}
       {compact && <Link className="button-quiet" href={`/savings/${circle.id}`}>{t('card.details')} <UiIcon as={ArrowRight} size={15} /></Link>}
     </div>
   </article>;

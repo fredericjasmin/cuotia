@@ -7,7 +7,7 @@ import { useI18n } from './i18n-provider.jsx';
 export function HowItWorksPage() {
   const { t } = useI18n();
   return <div className="content-page info-page"><h1>{t('how.title')}</h1><p className="info-lead">{t('how.lead')}</p>
-    <div className="steps-grid">{[1, 2, 3, 4].map((step) => <article key={step}><span>{String(step).padStart(2, '0')}</span><h2>{t(`how.s${step}Title`)}</h2><p>{t(`how.s${step}Body`)}</p></article>)}</div>
+    <div className="steps-grid">{[1, 2, 3, 4].map((step) => <article key={step}><h2>{step}. {t(`how.s${step}Title`)}</h2><p>{t(`how.s${step}Body`)}</p></article>)}</div>
     <section className="info-callout"><div><h2>{t('how.calloutTitle')}</h2><p>{t('how.calloutBody')}</p></div><Link className="button-secondary" href="/savings">{t('common.browseCircles')}</Link></section>
     <WritzEarnSection />
   </div>;

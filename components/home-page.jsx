@@ -25,7 +25,7 @@ export default function HomePage() {
       </div>
     </section>
 
-    <section className="home-proof" aria-label={t('home.proofAria')}><article><span>01</span><h2>{t('home.p1Title')}</h2><p>{t('home.p1Body')}</p></article><article><span>02</span><h2>{t('home.p2Title')}</h2><p>{t('home.p2Body')}</p></article><Link className="apy-card" href="/how-it-works#earn"><span>03</span><h2>{t('home.p3Title')}</h2><span className="apy-card-kicker">{t('home.apyLabel')}</span><strong>{apy || <span className="skeleton-block apy-card-skeleton" aria-label={t('common.loadingApy')} />}</strong><span className="earn-card-link">{t('home.earnLink')} <UiIcon as={ArrowRight} size={15} /></span></Link></section>
+    <section className="home-proof" aria-label={t('home.proofAria')}><article><h2>{t('home.p1Title')}</h2><p>{t('home.p1Body')}</p></article><article><h2>{t('home.p2Title')}</h2><p>{t('home.p2Body')}</p></article><Link className="apy-card" href="/how-it-works#earn"><h2>{t('home.p3Title')}</h2><span className="apy-card-kicker">{t('home.apyLabel')}</span><strong>{apy || <span className="skeleton-block apy-card-skeleton" aria-label={t('common.loadingApy')} />}</strong><span className="earn-card-link">{t('home.earnLink')} <UiIcon as={ArrowRight} size={15} /></span></Link></section>
 
     <section className="home-next"><div><h2>{t('home.nextTitle')}</h2></div><div className="home-next-actions"><Link href="/how-it-works">{t('home.seeHow')} <UiIcon as={ArrowUpRight} size={15} /></Link><Link href="/savings">{t('common.browseCircles')} <UiIcon as={ArrowUpRight} size={15} /></Link></div></section>
   </div>;

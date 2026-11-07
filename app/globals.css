@@ -119,7 +119,7 @@ a { color: inherit; }
 .transaction-link a { color: var(--accent); font-weight: 650; }
 .circle-heading { display: flex; justify-content: space-between; gap: 15px; }
 .circle-meta { color: var(--cream); font-size: var(--text-label); font-weight: 600; }
-.circle-heading h3 { margin: 7px 0 6px; font: 800 var(--text-title)/1.25 'Poppins', sans-serif; letter-spacing: -.4px; }
+.circle-heading h3 { margin: 0 0 6px; font: 800 var(--text-title)/1.25 'Poppins', sans-serif; letter-spacing: -.4px; }
 .circle-heading p { margin: 0; color: var(--muted); font-size: var(--text-label); }
 .circle-heading p span { padding: 0 4px; color: var(--subtle); }
 .round-chip { height: max-content; padding: 8px 11px; border: 1px solid var(--line-strong); border-radius: 20px; background: var(--canvas); color: var(--cream); font-size: var(--text-label); font-weight: 700; white-space: nowrap; }
