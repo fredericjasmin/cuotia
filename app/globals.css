@@ -72,6 +72,12 @@ a { color: inherit; }
 .language-check { margin-left: auto; }
 .flag { display: block; flex: none; width: 22px; height: 15px; border-radius: 3px; box-shadow: 0 0 0 1px #FFFCF126; }
 .nav-language { display: none; }
+.network-dot { display: block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: #5BD18B; }
+.network-dot.is-off { background: var(--line-strong); }
+.network-menu-popover { width: 260px; }
+.network-menu-popover button > span:not(.network-dot) { white-space: nowrap; }
+.network-menu-popover button.is-soon { color: var(--muted); }
+.network-menu-popover button small { margin-left: auto; padding: 2px 7px; border: 1px solid var(--line-strong); border-radius: 20px; font-size: 11px; white-space: nowrap; }
 .wallet-button { border: 1px solid transparent; border-radius: 9px; padding: 12px 16px; background: var(--lavender); color: #000; font-size: var(--text-label); font-weight: 700; transition: background-color .2s ease, border-color .2s ease; }
 .wallet-button-skeleton { width: 142px; height: 44px; border-radius: 9px; }
 .wallet-button:hover { border-color: var(--lavender); }
@@ -216,6 +222,7 @@ a { color: inherit; }
 .apy-skeleton { display: inline-block; width: 82px; height: 34px; vertical-align: middle; }
 .button-secondary { border: 1px solid transparent; background: var(--yellow); color: #000; }
 .button-secondary:not(:disabled):hover { background: #f0d01a; }
+.claim-fee-note { flex: 1 1 100%; margin: 0; }
 .complete-label { padding: 10px 0; color: var(--muted); font-size: var(--text-label); }
 .footer-brand .brand-logo { width: 42px; height: 42px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
@@ -442,6 +449,7 @@ a { color: inherit; }
   .nav-label-full { display: inline; }
   .nav-label-compact { display: none; }
   .topbar-actions > .language-menu { display: none; }
+  .topbar nav .nav-language + .nav-language { margin-top: 0; }
   .topbar nav .nav-language { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; padding: 10px 12px 4px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--text-label); }
   .wallet-button { padding: 9px 11px; }
   .wallet-menu summary { min-height: 40px; padding: 8px 10px; }

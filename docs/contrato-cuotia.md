@@ -10,6 +10,24 @@ The Soroban contract source is in `contracts/cuotia-v3/`. The application uses i
 - Cancellation does not send refunds automatically. Each member claims their own recorded contributions in a wallet-signed transaction.
 - When every round completes, each member claims their own total in a separate transaction.
 
+## Limits
+
+- 2 to 25 members per circle, 1 to 520 rounds (10 years weekly, 43 years monthly). No cap on the contribution amount.
+- Storage entries are extended to the network's maximum TTL (~180 days) whenever fewer than ~30 days remain, so circles do not lapse between monthly contributions. The contract instance and code are extended on every write.
+- Automatic contributions use a token allowance that lasts up to the network maximum (~180 days); the member renews it from the app. Its expiration is rounded down to a whole day so the signed `approve` arguments match between simulation and execution.
+
+## Upgrades
+
+The admin set at deployment can replace the code with `upgrade(new_wasm_hash)` and then run `migrate`, keeping the address and all stored circles. `version` returns the running release; `set_admin` hands the role over (both accounts sign). Process and storage-compatibility rules: [actualizaciones.md](actualizaciones.md).
+
+## Fees
+
+Fixed at deployment through the constructor (`treasury`, `claim_fee_bps`, `yield_fee_bps`) and copied into each circle when it is created, so a group's terms never change afterwards. The code caps them at 10% and 50%.
+
+- Completed circle: Cuotia keeps `claim_fee_bps` of each member's principal (100 = 1%) plus `yield_fee_bps` of any Writz gain (1500 = 15%). Never more than what is withdrawn.
+- Cancelled circle: no fee; each member gets back everything recorded.
+- Fees accrue inside the contract (`accrued_fees`) and only the treasury can move them out (`withdraw_fees`), so the treasury account can never block a member's claim.
+
 The contract does not pay an organizer or a shared recipient. Monthly periods are modeled as 30 days. Writz Earn is an optional circle mode: every member must accept before contributions begin. Earn circles use Blend Testnet USDC, deposit through the DeFindex vault, and claim the value recovered by each member's recorded shares. The APY is not guaranteed; claims can be lower than principal or delayed by vault liquidity.
 
 ## Local development and Testnet
@@ -25,7 +43,8 @@ Pop-Location
 Deploy the generated Wasm to Stellar Testnet:
 
 ```powershell
-stellar contract deploy --wasm contracts/cuotia-v3/target/wasm32v1-none/release/cuotia_contract_v3.wasm --source-account cuotia-dev --network testnet --optimize=false --alias cuotia-v3-dev
+stellar contract deploy --wasm contracts/cuotia-v3/target/wasm32v1-none/release/cuotia_contract_v3.wasm --source-account cuotia-dev --network testnet --optimize=false --alias cuotia-v6-dev `
+  -- --admin <ADMIN_ADDRESS> --treasury <TREASURY_ADDRESS> --claim_fee_bps 100 --yield_fee_bps 1500
 ```
 
 Configure the returned public contract ID in `.env.local` as `NEXT_PUBLIC_CUOTIA_CONTRACT_ID`. Also configure `NEXT_PUBLIC_CUOTIA_TOKEN_ID` with the Circle USDC Testnet Stellar Asset Contract and `NEXT_PUBLIC_SOROBAN_RPC_URL` with the Testnet RPC. The local deployment IDs are in `docs/despliegue-local.md`, which is ignored by Git.

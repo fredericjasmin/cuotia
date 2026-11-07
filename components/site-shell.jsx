@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { Check, CheckCircle2, ChevronDown, CircleAlert, Menu, Wallet, X } from 'lucide-react';
+import { Check, CheckCircle2, ChevronDown, CircleAlert, Info, Menu, Wallet, X } from 'lucide-react';
 import { useCuotia } from './app-provider.jsx';
 import { WalletButtonSkeleton, WalletGateSkeleton } from './loading-skeletons.jsx';
 import UiIcon from './ui-icon.jsx';
@@ -72,6 +72,45 @@ function LanguageSwitch() {
         const { name, Flag } = LANGUAGE_OPTIONS[code];
         return <button key={code} type="button" role="menuitemradio" aria-checked={locale === code} lang={code} className={locale === code ? 'is-active' : ''} onClick={() => choose(code)}><Flag /><span>{name}</span>{locale === code && <UiIcon as={Check} className="language-check" size={15} />}</button>;
       })}
+    </div>
+  </details>;
+}
+
+// Cuotia runs on Testnet only. Mainnet is listed so people know it is coming, but it cannot be
+// selected yet: choosing it just explains that.
+function NetworkSwitch() {
+  const { t } = useI18n();
+  const { showToast } = useCuotia();
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return undefined;
+    function closeOnOutsideClick(event) {
+      if (menu.open && !menu.contains(event.target)) menu.open = false;
+    }
+    function closeOnEscape(event) {
+      if (event.key !== 'Escape' || !menu.open) return;
+      menu.open = false;
+      menu.querySelector('summary')?.focus();
+    }
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, []);
+
+  function close() {
+    if (menuRef.current) menuRef.current.open = false;
+  }
+
+  return <details className="language-menu network-menu" ref={menuRef}>
+    <summary aria-label={t('network.label', { name: 'Testnet' })} title={t('network.title')}><span className="network-dot" aria-hidden="true" /><span className="language-code">Testnet</span><UiIcon as={ChevronDown} className="wallet-menu-chevron" size={14} /></summary>
+    <div className="language-menu-popover network-menu-popover" role="menu" aria-label={t('network.title')}>
+      <button type="button" role="menuitemradio" aria-checked="true" className="is-active" onClick={close}><span className="network-dot" aria-hidden="true" /><span>Stellar Testnet</span><UiIcon as={Check} className="language-check" size={15} /></button>
+      <button type="button" role="menuitemradio" aria-checked="false" aria-disabled="true" className="is-soon" onClick={() => { close(); showToast(t('network.mainnetSoon'), 'info'); }}><span className="network-dot is-off" aria-hidden="true" /><span>Stellar Mainnet</span><small>{t('network.soon')}</small></button>
     </div>
   </details>;
 }
@@ -175,8 +214,8 @@ export default function SiteShell({ children }) {
       <nav id="main-navigation" ref={mobileNavigationRef} className={mobileMenuOpen ? 'mobile-open' : ''} aria-label={t('shell.mainNav')}>{navigation.map(({ href, label, compact }) => {
         const active = pathname === href || (href !== '/' && pathname.startsWith(`${href}/`));
         return <Link key={href} aria-current={active ? 'page' : undefined} className={active ? 'is-active' : ''} href={href} onClick={() => setMobileMenuOpen(false)}><span className="nav-label-full">{t(label)}</span><span className="nav-label-compact">{t(compact)}</span></Link>;
-      })}<div className="nav-language"><span>{t('lang.label')}</span><LanguageSwitch /></div></nav>
-      <div className="topbar-actions"><LanguageSwitch />{!walletReady ? <WalletButtonSkeleton /> : walletAddress ? <details className="wallet-menu" ref={walletMenuRef}>
+      })}<div className="nav-language"><span>{t('lang.label')}</span><LanguageSwitch /></div><div className="nav-language"><span>{t('network.title')}</span><NetworkSwitch /></div></nav>
+      <div className="topbar-actions"><NetworkSwitch /><LanguageSwitch />{!walletReady ? <WalletButtonSkeleton /> : walletAddress ? <details className="wallet-menu" ref={walletMenuRef}>
         <summary className="wallet-button connected"><span className="wallet-status-dot" aria-hidden="true" />{shortAddress(walletAddress)}<UiIcon as={ChevronDown} className="wallet-menu-chevron" size={14} /></summary>
       <div className="wallet-menu-popover"><p className="wallet-menu-network">Stellar Testnet</p><Link href="/dashboard" onClick={closeWalletMenu}>{t('shell.dashboard')}</Link><Link href="/savings/create" onClick={closeWalletMenu}>{t('shell.createCircle')}</Link><button type="button" onClick={disconnectWallet}>{t('shell.disconnect')}</button></div>
       </details> : <details className="wallet-menu connect-wallet-menu" ref={walletMenuRef}>
@@ -191,7 +230,7 @@ export default function SiteShell({ children }) {
     <footer className="site-footer"><div className="site-footer-inner app-shell"><Link className="brand footer-brand" href="/" aria-label={t('shell.homeAria')}><Image className="brand-logo" src="/brand-mark.png" alt="" width={512} height={512} /></Link><p>{t('shell.footerNote')}</p><div><Link href="/how-it-works">{t('nav.how')}</Link><Link href="/savings">{t('nav.savings')}</Link></div></div></footer>
     {toast && <div className="toast-viewport" aria-live={toast.type === 'error' ? 'assertive' : 'polite'}>
       <div className={`toast-card toast-${toast.type}`} role={toast.type === 'error' ? 'alert' : 'status'} key={toast.id}>
-        <span className="toast-mark"><UiIcon as={toast.type === 'error' ? CircleAlert : CheckCircle2} size={19} /></span>
+        <span className="toast-mark"><UiIcon as={toast.type === 'error' ? CircleAlert : toast.type === 'info' ? Info : CheckCircle2} size={19} /></span>
         <p>{toast.message}</p>
         <button type="button" onClick={dismissToast} aria-label={t('shell.dismissToast')}><UiIcon as={X} size={17} /></button>
       </div>

@@ -40,7 +40,8 @@ For a separate Vercel instance, create a second deployer identity, such as `cuot
 Push-Location contracts/cuotia-v3
 stellar contract build --optimize=false
 Pop-Location
-stellar contract deploy --wasm contracts/cuotia-v3/target/wasm32v1-none/release/cuotia_contract_v3.wasm --source-account cuotia-dev --network testnet --optimize=false --alias cuotia-v3-dev
+stellar contract deploy --wasm contracts/cuotia-v3/target/wasm32v1-none/release/cuotia_contract_v3.wasm --source-account cuotia-dev --network testnet --optimize=false --alias cuotia-v6-dev `
+  -- --admin <ADMIN_ADDRESS> --treasury <TREASURY_ADDRESS> --claim_fee_bps 100 --yield_fee_bps 1500
 ```
 
 Save the returned public contract ID in the ignored local file `docs/despliegue-local.md`. A new deployment starts with empty contract storage; it does not migrate circles from another instance.

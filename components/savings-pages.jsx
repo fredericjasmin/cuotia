@@ -9,6 +9,9 @@ import {
   cancelSavingsCircle,
   cancelUnstartedSavingsCircle,
   claimSavingsCircle,
+  claimBreakdown,
+  bpsToPercent,
+  readFeeConfig,
   contributeToSavingsCircle,
   setSavingsCircleAutoPay,
   createSavingsCircle,
@@ -27,7 +30,8 @@ import { useI18n } from './i18n-provider.jsx';
 import { ActivitySkeleton, CircleCollectionSkeleton, CircleDetailSkeleton } from './loading-skeletons.jsx';
 import UiIcon from './ui-icon.jsx';
 
-const MAX_MEMBERS = 12;
+const MAX_MEMBERS = 25;
+const MAX_ROUNDS = 520;
 const FREQUENCIES = ['weekly', 'biweekly', 'monthly'];
 const ACTION_TOAST_KEYS = {
   contribute: 'toast.contributed',
@@ -229,7 +233,12 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
       {isMember && myContribution?.paid && circle.status === 'active' && <span className="complete-label"><UiIcon as={Check} size={15} /> {t('card.recorded')}</span>}
       {canAdvance && <button className="button-secondary" disabled={actionPending} onClick={() => runAction('advance')}>{busy ? waiting : t('card.advance')} <UiIcon as={ArrowRight} size={16} /></button>}
       {canCancel && <button className="button-secondary" disabled={actionPending} onClick={() => runAction('cancel')}>{busy ? waiting : t('card.cancel')}</button>}
-      {canClaim && <button className="button-primary" disabled={actionPending} onClick={() => runAction('claim')}>{busy ? waiting : circle.earnEnabled ? t('card.claimWritz') : t('card.claim', { amount: money(myContribution.total) })} <UiIcon as={ArrowUpRight} size={16} /></button>}
+      {canClaim && <button className="button-primary" disabled={actionPending} onClick={() => runAction('claim')}>{busy ? waiting : circle.earnEnabled ? t('card.claimWritz') : t('card.claim', { amount: preciseMoney(claimBreakdown(circle, myContribution.total).net) })} <UiIcon as={ArrowUpRight} size={16} /></button>}
+      {canClaim && !compact && circle.claimFeeBps > 0 && <p className="form-help claim-fee-note">{circle.cancelled
+        ? t('card.claimNoFee')
+        : circle.earnEnabled
+          ? t('card.claimFeeEarn', { percent: bpsToPercent(circle.claimFeeBps), yieldPercent: bpsToPercent(circle.yieldFeeBps) })
+          : t('card.claimFee', { percent: bpsToPercent(circle.claimFeeBps), fee: preciseMoney(claimBreakdown(circle, myContribution.total).fee), total: money(myContribution.total) })}</p>}
       {trustlineSetupRequired && <div className="inline-note trustline-setup-note" role="status"><p>{t('card.trustlineNote', { asset: assetLabel })}</p>{walletProvider !== 'cavos' && walletAddress && <a href={`https://friendbot.stellar.org/?addr=${encodeURIComponent(walletAddress)}`} target="_blank" rel="noreferrer">{t('activation.friendbot')} <UiIcon as={ExternalLink} size={14} /></a>}<button className="button-secondary" type="button" disabled={actionPending || trustlineBusy} onClick={setupTrustline}>{trustlineBusy ? waiting : t('card.authorize', { asset: assetLabel })}</button><a href={circle.earnEnabled ? 'https://testnet.blend.capital' : 'https://faucet.circle.com/'} target="_blank" rel="noreferrer">{t('card.getAsset', { asset: assetLabel })} <UiIcon as={ExternalLink} size={14} /></a></div>}
       {isMember && myContribution?.claimed && <span className="complete-label"><UiIcon as={Check} size={15} /> {t('card.claimedDone')}</span>}
       {remindUrl && <a className="button-quiet share-whatsapp" href={remindUrl} target="_blank" rel="noreferrer"><UiIcon as={MessageCircle} size={16} /> {t('remind.whatsapp')}</a>}
@@ -396,6 +405,12 @@ export function CreateSavingsCirclePage() {
   const { money } = useFormatters();
   const [form, setForm] = useState({ name: '', amount: '', frequency: 'weekly', rounds: '4', ownerName: '', others: [{ name: '', address: '' }], earnEnabled: false });
   const [busy, setBusy] = useState(false);
+  const [feeConfig, setFeeConfig] = useState(null);
+  useEffect(() => {
+    let active = true;
+    readFeeConfig().then((config) => { if (active) setFeeConfig(config); });
+    return () => { active = false; };
+  }, []);
   const submitLock = useRef(false);
   const configured = isChainConfigured();
   function updateOther(index, field, value) { setForm((current) => ({ ...current, others: current.others.map((member, i) => i === index ? { ...member, [field]: value } : member) })); }
@@ -421,8 +436,8 @@ export function CreateSavingsCirclePage() {
   const total = Number(form.amount || 0) * Number(form.rounds || 0);
   return <div className="content-page create-page"><Link className="back-link" href="/savings"><UiIcon as={ArrowLeft} size={16} /> {t('nav.savings')}</Link><div className="create-layout"><div className="create-intro"><h1>{t('create.title')}</h1><p>{t('create.lead')}</p><ul><li>{t('create.b1')}</li><li>{t('create.b2')}</li><li>{t('create.b3')}</li></ul></div><section className="create-form-panel"><h2>{t('card.details')}</h2><form onSubmit={submit}>
     <label className="field-label">{t('create.name')}<input required minLength="2" maxLength="48" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder={t('create.namePlaceholder')} /></label>
-    <div className="form-grid"><label className="field-label">{t('create.amount')}<input required type="number" min="0.0000001" max="1000000" step="0.0000001" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder="25.00" /></label><label className="field-label">{t('create.frequency')}<select value={form.frequency} onChange={(event) => setForm({ ...form, frequency: event.target.value })}>{FREQUENCIES.map((frequency) => <option key={frequency} value={frequency}>{t(`freq.${frequency}`)}</option>)}</select></label></div>
-    <label className="field-label">{t('create.rounds')}<input required type="number" min="1" max="52" step="1" value={form.rounds} onChange={(event) => setForm({ ...form, rounds: event.target.value })} /><span className="form-help">{t('create.totalHelp', { amount: money(total), asset: form.earnEnabled ? t('create.assetEarn') : 'Circle USDC' })}</span></label>
+    <div className="form-grid"><label className="field-label">{t('create.amount')}<input required type="number" min="0.0000001" step="0.0000001" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder="25.00" /></label><label className="field-label">{t('create.frequency')}<select value={form.frequency} onChange={(event) => setForm({ ...form, frequency: event.target.value })}>{FREQUENCIES.map((frequency) => <option key={frequency} value={frequency}>{t(`freq.${frequency}`)}</option>)}</select></label></div>
+    <label className="field-label">{t('create.rounds')}<input required type="number" min="1" max={MAX_ROUNDS} step="1" value={form.rounds} onChange={(event) => setForm({ ...form, rounds: event.target.value })} /><span className="form-help">{t('create.totalHelp', { amount: money(total), asset: form.earnEnabled ? t('create.assetEarn') : 'Circle USDC' })}</span>{feeConfig?.claimFeeBps > 0 && <span className="form-help">{form.earnEnabled ? t('create.feeHelpEarn', { percent: bpsToPercent(feeConfig.claimFeeBps), yieldPercent: bpsToPercent(feeConfig.yieldFeeBps) }) : t('create.feeHelp', { percent: bpsToPercent(feeConfig.claimFeeBps) })}</span>}</label>
     <div className="member-fields"><div className="member-fields-heading"><span>{t('create.yourMembership')}</span><span>{t('create.organizer', { address: shortAddress(walletAddress) })}</span></div><input required maxLength="40" value={form.ownerName} onChange={(event) => setForm({ ...form, ownerName: event.target.value })} placeholder={t('create.yourName')} /></div>
     <div className="member-fields"><div className="member-fields-heading"><span>{t('create.invite')}</span><span>{form.others.length + 1} / {MAX_MEMBERS}</span></div><p className="form-help">{t('create.inviteHelp')}</p>{form.others.map((member, index) => <div className="invite-member" key={index}><span className="member-number">{String(index + 2).padStart(2, '0')}</span><input required maxLength="40" value={member.name} onChange={(event) => updateOther(index, 'name', event.target.value)} placeholder={t('create.memberName')} /><input required autoCapitalize="characters" spellCheck="false" value={member.address} onChange={(event) => updateOther(index, 'address', event.target.value.trim().toUpperCase())} placeholder={t('create.memberAddress')} aria-label={t('create.memberAddressAria', { n: String(index + 2) })} />{form.others.length > 1 && <button className="remove-member" type="button" onClick={() => setForm({ ...form, others: form.others.filter((_, i) => i !== index) })} aria-label={t('create.remove')}><UiIcon as={X} size={16} /></button>}</div>)}{form.others.length + 1 < MAX_MEMBERS && <button className="add-member" type="button" onClick={() => setForm((current) => ({ ...current, others: [...current.others, { name: '', address: '' }] }))}><UiIcon as={Plus} size={16} /> {t('create.add')}</button>}</div>
     <div className="earn-choice"><label><input type="checkbox" checked={form.earnEnabled} onChange={(event) => setForm({ ...form, earnEnabled: event.target.checked })} /><span><strong>{t('create.earnLabel')}</strong><small>{t('create.earnSmall')}</small></span></label>{form.earnEnabled ? <p>{t('create.earnOnStart')}<strong>{t('create.earnOnStrong')}</strong>{t('create.earnOnEnd')}</p> : <p>{t('create.earnOffStart')}<strong>{t('create.earnOffStrong')}</strong>{t('create.earnOffEnd')}</p>}</div>

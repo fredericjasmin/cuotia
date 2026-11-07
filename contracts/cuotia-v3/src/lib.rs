@@ -2,15 +2,27 @@
 
 use soroban_sdk::{
     auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
-    contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, token,
-    Address, Env, IntoVal, String, TryFromVal, Val, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, panic_with_error, symbol_short, token,
+    Address, BytesN, ContractExecutable, Env, IntoVal, String, TryFromVal, Val, Vec,
 };
 
-const MAX_MEMBERS: u32 = 12;
+/// Version of this code. Raise it in every release that is installed with `upgrade`, so anyone
+/// can check on chain which code a contract is running.
+pub const CONTRACT_VERSION: u32 = 6;
+
+const MAX_MEMBERS: u32 = 25;
+const MAX_ROUNDS: u32 = 520;
 const MAX_CIRCLES_PER_PAGE: u32 = 30;
-const TTL_THRESHOLD: u32 = 30_000;
-const TTL_EXTEND_TO: u32 = 500_000;
+/// Entries are extended to the network's maximum TTL (~180 days) whenever fewer than ~30 days
+/// remain, so a monthly circle never lapses between contributions.
+const TTL_THRESHOLD: u32 = 518_400;
+const BPS_DENOMINATOR: i128 = 10_000;
+/// Hard caps fixed in the code: the deployer can never set a higher fee.
+const MAX_CLAIM_FEE_BPS: u32 = 1_000;
+const MAX_YIELD_FEE_BPS: u32 = 5_000;
 const SECONDS_PER_DAY: u64 = 86_400;
+/// ~5 s per ledger.
+const LEDGERS_PER_DAY: u32 = 17_280;
 pub const GRACE_PERIOD_SECONDS: u64 = 3 * SECONDS_PER_DAY;
 const WRITZ_VAULT_ID: &str = "CBMHGL7GGGHODEDDJ5H2LKJEFHJWBRSQUKOXMC4FKOFDZK5HBKW6PI2S";
 const BLEND_USDC_ID: &str = "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU";
@@ -45,6 +57,20 @@ pub enum CircleError {
     InvalidEarnAsset = 25,
     AutoPayDisabled = 26,
     NothingToCollect = 27,
+    InvalidFee = 28,
+    /// `upgrade` was asked to install a release that is not newer than the running one.
+    VersionNotNewer = 29,
+}
+
+/// Set once by the constructor and never changed: who may withdraw Cuotia's fees and how much they are.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FeeConfig {
+    pub treasury: Address,
+    /// Fee on the saved principal, in basis points (100 = 1%). Only on completed circles.
+    pub claim_fee_bps: u32,
+    /// Fee on the yield earned in Writz, in basis points (1500 = 15%). Never on the principal.
+    pub yield_fee_bps: u32,
 }
 
 #[contracttype]
@@ -85,6 +111,10 @@ pub struct Circle {
     pub earn_shares: Vec<i128>,
     /// Per-member opt-in for automatic contributions. Off by default.
     pub auto_pay: Vec<bool>,
+    /// Fees copied from the contract configuration when the circle was created: the rules a
+    /// group agreed to cannot change afterwards.
+    pub claim_fee_bps: u32,
+    pub yield_fee_bps: u32,
 }
 
 #[contractevent(topics = ["created"])]
@@ -126,6 +156,35 @@ pub struct ClaimRecorded {
     #[topic]
     pub id: u32,
     pub member: Address,
+    /// What the member received, after Cuotia's fee.
+    pub amount: i128,
+    pub fee: i128,
+}
+
+#[contractevent(topics = ["upgraded"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContractUpgraded {
+    pub wasm_hash: BytesN<32>,
+}
+
+#[contractevent(topics = ["migrated"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StorageMigrated {
+    pub from_version: u32,
+    pub to_version: u32,
+}
+
+#[contractevent(topics = ["admin"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminChanged {
+    pub admin: Address,
+}
+
+#[contractevent(topics = ["fees_out"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FeesWithdrawn {
+    #[topic]
+    pub token: Address,
     pub amount: i128,
 }
 
@@ -151,9 +210,16 @@ pub struct AutoContributionCollected {
 #[derive(Clone)]
 enum DataKey {
     NextId,
+    Config,
+    /// Who may install new code with `upgrade` (and hand that role over with `set_admin`).
+    Admin,
+    /// Version of the code that last wrote the storage; see `migrate`.
+    StorageVersion,
     Circle(u32),
     /// (member, token): what Cuotia may still pull from this member across all circles.
     AutoPay(Address, Address),
+    /// Fees collected per token, waiting for `withdraw_fees`.
+    Fees(Address),
 }
 
 /// Allowance that Cuotia keeps in sync with the member's opted-in circles. `committed` is the
@@ -171,6 +237,65 @@ pub struct Cuotia;
 
 #[contractimpl]
 impl Cuotia {
+    /// Runs once, at deployment. The fee can never exceed the caps written in the code above.
+    pub fn __constructor(env: Env, admin: Address, treasury: Address, claim_fee_bps: u32, yield_fee_bps: u32) {
+        if claim_fee_bps > MAX_CLAIM_FEE_BPS || yield_fee_bps > MAX_YIELD_FEE_BPS {
+            panic_with_error!(&env, CircleError::InvalidFee);
+        }
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Config, &FeeConfig { treasury, claim_fee_bps, yield_fee_bps });
+        env.storage().instance().set(&DataKey::StorageVersion, &CONTRACT_VERSION);
+        bump_instance(&env);
+    }
+
+    /// Version of the code this contract is running.
+    pub fn version(_env: Env) -> u32 {
+        CONTRACT_VERSION
+    }
+
+    pub fn admin(env: Env) -> Address {
+        admin(&env)
+    }
+
+    /// Replaces this contract's code, keeping its address and every circle. Only the admin.
+    /// The new code must already be uploaded (`stellar contract upload`); then call `migrate`.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        admin(&env).require_auth();
+        bump_instance(&env);
+        env.deployer().update_current_contract(ContractExecutable::Wasm(new_wasm_hash.clone()));
+        ContractUpgraded { wasm_hash: new_wasm_hash }.publish(&env);
+    }
+
+    /// Runs right after `upgrade`, already with the new code: converts stored data when a release
+    /// changes its shape and records the new storage version. Only the admin. Fails if the code
+    /// is not newer than what wrote the storage, so it cannot run twice.
+    pub fn migrate(env: Env) -> Result<u32, CircleError> {
+        admin(&env).require_auth();
+        bump_instance(&env);
+        let from_version: u32 = env.storage().instance().get(&DataKey::StorageVersion).unwrap_or(0);
+        if from_version >= CONTRACT_VERSION {
+            return Err(CircleError::VersionNotNewer);
+        }
+        // Per-release conversions go here, e.g. `if from_version < 7 { ... }`.
+        env.storage().instance().set(&DataKey::StorageVersion, &CONTRACT_VERSION);
+        StorageMigrated { from_version, to_version: CONTRACT_VERSION }.publish(&env);
+        Ok(CONTRACT_VERSION)
+    }
+
+    /// Hands the admin role to another account (for example a multisig before Mainnet). Both the
+    /// current and the new admin sign, so a typo can never lock the contract.
+    pub fn set_admin(env: Env, new_admin: Address) {
+        admin(&env).require_auth();
+        new_admin.require_auth();
+        bump_instance(&env);
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        AdminChanged { admin: new_admin }.publish(&env);
+    }
+
+    pub fn fee_config(env: Env) -> FeeConfig {
+        config(&env)
+    }
+
     pub fn create_circle(
         env: Env,
         owner: Address,
@@ -183,6 +308,7 @@ impl Cuotia {
         earn_enabled: bool,
     ) -> Result<u32, CircleError> {
         owner.require_auth();
+        bump_instance(&env);
         if name.len() < 2 || name.len() > 48 {
             return Err(CircleError::InvalidName);
         }
@@ -192,7 +318,7 @@ impl Cuotia {
         if members.len() < 2 || members.len() > MAX_MEMBERS {
             return Err(CircleError::InvalidMemberCount);
         }
-        if rounds_total == 0 || rounds_total > 52 {
+        if rounds_total == 0 || rounds_total > MAX_ROUNDS {
             return Err(CircleError::InvalidRoundCount);
         }
         if contribution <= 0 {
@@ -230,21 +356,22 @@ impl Cuotia {
             .ok_or(CircleError::TimestampOverflow)?;
         let id = env.storage().persistent().get(&DataKey::NextId).unwrap_or(1_u32);
         let next_id = id.checked_add(1).ok_or(CircleError::CircleIdOverflow)?;
-        let mut earn_accepted = Vec::from_array(&env, [!earn_enabled; 12]).slice(0..members.len());
+        let member_count = members.len();
+        let fees = config(&env);
+        let mut earn_accepted = filled(&env, !earn_enabled, member_count);
         if earn_enabled {
             let owner_index = member_index(&members, &owner).ok_or(CircleError::OwnerNotMember)?;
             earn_accepted.set(owner_index, true);
         }
-        let member_count = members.len();
         let circle = Circle {
             id,
             owner,
             token: token_address,
             name,
             frequency,
-            contributed: Vec::from_array(&env, [false; 12]).slice(0..members.len()),
-            paid_totals: Vec::from_array(&env, [0_i128; 12]).slice(0..members.len()),
-            claimed: Vec::from_array(&env, [false; 12]).slice(0..members.len()),
+            contributed: filled(&env, false, member_count),
+            paid_totals: filled(&env, 0_i128, member_count),
+            claimed: filled(&env, false, member_count),
             members,
             contribution,
             round: 0,
@@ -254,15 +381,15 @@ impl Cuotia {
             round_due_at,
             earn_enabled,
             earn_accepted,
-            earn_shares: Vec::from_array(&env, [0_i128; 12]).slice(0..member_count),
-            auto_pay: Vec::from_array(&env, [false; 12]).slice(0..member_count),
+            earn_shares: filled(&env, 0_i128, member_count),
+            auto_pay: filled(&env, false, member_count),
+            claim_fee_bps: fees.claim_fee_bps,
+            yield_fee_bps: fees.yield_fee_bps,
         };
 
-        let circle_key = DataKey::Circle(id);
-        env.storage().persistent().set(&circle_key, &circle);
-        env.storage().persistent().extend_ttl(&circle_key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        save(&env, id, &circle);
         env.storage().persistent().set(&DataKey::NextId, &next_id);
-        env.storage().persistent().extend_ttl(&DataKey::NextId, TTL_THRESHOLD, TTL_EXTEND_TO);
+        bump_persistent(&env, &DataKey::NextId);
         CircleCreated { id, name: circle.name.clone() }.publish(&env);
         Ok(id)
     }
@@ -285,6 +412,7 @@ impl Cuotia {
 
     pub fn contribute(env: Env, id: u32, member: Address) -> Result<(), CircleError> {
         member.require_auth();
+        bump_instance(&env);
         let mut circle = load(&env, id)?;
         require_active(&circle)?;
         let index = member_index(&circle.members, &member).ok_or(CircleError::NotAMember)?;
@@ -298,6 +426,7 @@ impl Cuotia {
     /// so no allowance is left behind.
     pub fn set_auto_pay(env: Env, id: u32, member: Address, enabled: bool) -> Result<(), CircleError> {
         member.require_auth();
+        bump_instance(&env);
         let mut circle = load(&env, id)?;
         let index = member_index(&circle.members, &member).ok_or(CircleError::NotAMember)?;
         let currently = circle.auto_pay.get(index).unwrap_or(false);
@@ -337,6 +466,7 @@ impl Cuotia {
     /// contribution with the allowance granted in `set_auto_pay`, under the same rules as a
     /// manual contribution (open window, not yet paid this round, Earn consent complete).
     pub fn collect(env: Env, id: u32, member: Address) -> Result<(), CircleError> {
+        bump_instance(&env);
         let mut circle = load(&env, id)?;
         require_active(&circle)?;
         let index = member_index(&circle.members, &member).ok_or(CircleError::NotAMember)?;
@@ -349,6 +479,7 @@ impl Cuotia {
     /// Each member individually opts into Writz before any contributions are accepted.
     pub fn accept_earn(env: Env, id: u32, member: Address) -> Result<(), CircleError> {
         member.require_auth();
+        bump_instance(&env);
         let mut circle = load(&env, id)?;
         require_active(&circle)?;
         if !circle.earn_enabled { return Err(CircleError::EarnNotEnabled); }
@@ -364,6 +495,7 @@ impl Cuotia {
     /// A member may cancel an Earn circle before contributions if the group does not reach consensus.
     pub fn cancel_unstarted(env: Env, id: u32, member: Address) -> Result<(), CircleError> {
         member.require_auth();
+        bump_instance(&env);
         let mut circle = load(&env, id)?;
         require_active(&circle)?;
         if !circle.earn_enabled { return Err(CircleError::EarnNotEnabled); }
@@ -377,6 +509,7 @@ impl Cuotia {
 
     /// Anyone may advance a fully paid round once its scheduled period has elapsed.
     pub fn advance_round(env: Env, id: u32) -> Result<u32, CircleError> {
+        bump_instance(&env);
         let mut circle = load(&env, id)?;
         require_active(&circle)?;
         if circle.round + 1 >= circle.rounds_total {
@@ -389,7 +522,7 @@ impl Cuotia {
             return Err(CircleError::RoundNotDue);
         }
         circle.round += 1;
-        circle.contributed = Vec::from_array(&env, [false; 12]).slice(0..circle.members.len());
+        circle.contributed = filled(&env, false, circle.members.len());
         circle.round_due_at = env.ledger().timestamp()
             .checked_add(frequency_interval(&env, &circle.frequency))
             .ok_or(CircleError::TimestampOverflow)?;
@@ -400,6 +533,7 @@ impl Cuotia {
 
     /// Anyone may cancel once the current round remains incomplete past its grace period.
     pub fn cancel_circle(env: Env, id: u32) -> Result<(), CircleError> {
+        bump_instance(&env);
         let mut circle = load(&env, id)?;
         require_active(&circle)?;
         if all_contributed(&circle.contributed) {
@@ -420,6 +554,7 @@ impl Cuotia {
     /// only that member's recorded contributions. Claims are individual and one-time.
     pub fn claim(env: Env, id: u32, member: Address) -> Result<i128, CircleError> {
         member.require_auth();
+        bump_instance(&env);
         let mut circle = load(&env, id)?;
         if circle.status == CircleStatus::Active {
             return Err(CircleError::CircleNotActive);
@@ -432,20 +567,48 @@ impl Cuotia {
         if principal <= 0 {
             return Err(CircleError::NothingToClaim);
         }
-        let amount = if circle.earn_enabled {
+        let gross = if circle.earn_enabled {
             withdraw_writz_shares(&env, circle.earn_shares.get(index).unwrap_or(0))?
         } else {
             principal
         };
-        if amount <= 0 { return Err(CircleError::NothingToClaim); }
+        if gross <= 0 { return Err(CircleError::NothingToClaim); }
+        // A cancelled circle returns everything: Cuotia only charges when the group completes.
+        let fee = if circle.status == CircleStatus::Complete { claim_fee(&circle, principal, gross)? } else { 0 };
+        let amount = gross - fee;
         circle.claimed.set(index, true);
         save(&env, id, &circle);
-        token::Client::new(&env, &circle.token).transfer(
-            &env.current_contract_address(),
-            &member,
-            &amount,
-        );
-        ClaimRecorded { id, member, amount }.publish(&env);
+        if fee > 0 {
+            // Fees stay in the contract until the treasury withdraws them, so a problem with the
+            // treasury account (for example a missing trustline) can never block a member's claim.
+            let key = DataKey::Fees(circle.token.clone());
+            let accrued: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+            env.storage().persistent().set(&key, &accrued.checked_add(fee).ok_or(CircleError::AmountOverflow)?);
+            bump_persistent(&env, &key);
+        }
+        token::Client::new(&env, &circle.token).transfer(&env.current_contract_address(), &member, &amount);
+        ClaimRecorded { id, member, amount, fee }.publish(&env);
+        Ok(amount)
+    }
+
+    /// Fees collected in a token and not yet withdrawn.
+    pub fn accrued_fees(env: Env, token_address: Address) -> i128 {
+        env.storage().persistent().get(&DataKey::Fees(token_address)).unwrap_or(0)
+    }
+
+    /// Sends the accrued fees of a token to the treasury. Only the treasury can call it.
+    pub fn withdraw_fees(env: Env, token_address: Address) -> Result<i128, CircleError> {
+        let treasury = config(&env).treasury;
+        treasury.require_auth();
+        bump_instance(&env);
+        let key = DataKey::Fees(token_address.clone());
+        let amount: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+        if amount <= 0 {
+            return Err(CircleError::NothingToClaim);
+        }
+        env.storage().persistent().set(&key, &0_i128);
+        token::Client::new(&env, &token_address).transfer(&env.current_contract_address(), &treasury, &amount);
+        FeesWithdrawn { token: token_address, amount }.publish(&env);
         Ok(amount)
     }
 
@@ -584,16 +747,22 @@ fn load_grant(env: &Env, member: &Address, token_address: &Address) -> AutoPayGr
 fn store_grant(env: &Env, member: &Address, token_address: &Address, grant: &AutoPayGrant) {
     let key = DataKey::AutoPay(member.clone(), token_address.clone());
     env.storage().persistent().set(&key, grant);
-    env.storage().persistent().extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+    bump_persistent(env, &key);
 }
 
-/// Sets the token allowance to exactly the committed amount, with the longest expiration the
-/// network allows (or revokes it when nothing is committed). Requires the member's auth.
+/// Sets the token allowance to exactly the committed amount, with (almost) the longest expiration
+/// the network allows, or revokes it when nothing is committed. Requires the member's auth.
+///
+/// The member signs the nested `approve` call with its exact arguments during simulation, and the
+/// transaction executes a few ledgers later. So the expiration must not depend on the exact ledger:
+/// it is rounded down to a whole day, and a revocation uses a fixed 0.
 fn sync_allowance(env: &Env, member: &Address, token_address: &Address, grant: &mut AutoPayGrant) {
     let expiration = if grant.committed > 0 {
-        env.ledger().max_live_until_ledger()
+        let max = env.ledger().max_live_until_ledger();
+        let rounded = max - max % LEDGERS_PER_DAY;
+        if rounded > env.ledger().sequence() { rounded } else { max }
     } else {
-        env.ledger().sequence()
+        0
     };
     token::Client::new(env, token_address).approve(member, &env.current_contract_address(), &grant.committed, &expiration);
     grant.expires_ledger = if grant.committed > 0 { expiration } else { 0 };
@@ -623,7 +792,44 @@ fn load(env: &Env, id: u32) -> Result<Circle, CircleError> {
 fn save(env: &Env, id: u32, circle: &Circle) {
     let key = DataKey::Circle(id);
     env.storage().persistent().set(&key, circle);
-    env.storage().persistent().extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+    bump_persistent(env, &key);
+}
+
+fn admin(env: &Env) -> Address {
+    env.storage().instance().get(&DataKey::Admin).unwrap()
+}
+
+fn config(env: &Env) -> FeeConfig {
+    env.storage().instance().get(&DataKey::Config).unwrap()
+}
+
+/// Cuotia's fee on a completed claim: `claim_fee_bps` of the principal plus `yield_fee_bps` of
+/// any Writz gain. Never more than what is being withdrawn.
+fn claim_fee(circle: &Circle, principal: i128, gross: i128) -> Result<i128, CircleError> {
+    let on_principal = principal.checked_mul(circle.claim_fee_bps as i128).ok_or(CircleError::AmountOverflow)? / BPS_DENOMINATOR;
+    let gain = if gross > principal { gross - principal } else { 0 };
+    let on_yield = gain.checked_mul(circle.yield_fee_bps as i128).ok_or(CircleError::AmountOverflow)? / BPS_DENOMINATOR;
+    let fee = on_principal.checked_add(on_yield).ok_or(CircleError::AmountOverflow)?;
+    Ok(if fee > gross { gross } else { fee })
+}
+
+/// Keeps the contract instance and its code alive (both share this TTL).
+fn bump_instance(env: &Env) {
+    let max = env.storage().max_ttl();
+    env.storage().instance().extend_ttl(TTL_THRESHOLD.min(max), max);
+}
+
+fn bump_persistent(env: &Env, key: &DataKey) {
+    let max = env.storage().max_ttl();
+    env.storage().persistent().extend_ttl(key, TTL_THRESHOLD.min(max), max);
+}
+
+fn filled<T: IntoVal<Env, Val> + TryFromVal<Env, Val> + Clone>(env: &Env, value: T, count: u32) -> Vec<T> {
+    let mut items = Vec::new(env);
+    for _ in 0..count {
+        items.push_back(value.clone());
+    }
+    items
 }
 
 fn member_index(members: &Vec<CircleMember>, address: &Address) -> Option<u32> {
