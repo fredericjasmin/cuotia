@@ -6,6 +6,7 @@ Cuotia helps groups organize community savings circles. The web app and its API 
 
 - The repository root contains the single Next.js app: the website, API routes, and Stellar JavaScript client.
 - `contracts/cuotia-v3/` contains the new Soroban contract for savings circles, cancellations, individual claims, and unanimous optional Writz Earn. It requires a fresh Testnet deployment; configure `NEXT_PUBLIC_CUOTIA_CONTRACT_ID` with that new instance.
+- Members can opt in, individually, to **automatic contributions**: the contract collects one contribution per round through a token allowance, triggered hourly by `/api/auto-pay` (scheduled on cron-job.org). Off by default. See [docs/aporte-automatico.md](docs/aporte-automatico.md).
 - `docs/` contains architecture, project planning, and integration notes.
 
 The root `package.json` belongs to the Next.js app. There are no separate packages or npm workspaces.

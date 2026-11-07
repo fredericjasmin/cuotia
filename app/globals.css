@@ -530,3 +530,12 @@ a { color: inherit; }
   .wallet-menu-chevron { width: 12px; height: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .home-art-logo, .skeleton-block { animation: none; } }
+
+/* Automatic contribution (per member, off by default) */
+.auto-pay-panel { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between; margin: 16px 0; padding: 16px 18px; border: 1px solid var(--line-strong); border-radius: 11px; background: #ffffff05; }
+.auto-pay-panel.is-on { border-color: var(--yellow); background: #FFDD1C0d; }
+.auto-pay-copy { flex: 1 1 280px; min-width: 0; color: var(--muted); font-size: var(--text-label); line-height: 1.5; }
+.auto-pay-copy strong { display: inline-flex; gap: 8px; align-items: center; color: var(--ink); font-size: var(--text-small); }
+.auto-pay-copy p { margin: 6px 0 0; }
+.auto-pay-state { padding: 3px 9px; border: 1px solid var(--line-strong); border-radius: 20px; background: var(--canvas); color: var(--muted); font-size: 12px; font-weight: 700; }
+.auto-pay-panel.is-on .auto-pay-state { border-color: var(--yellow); color: var(--yellow); }

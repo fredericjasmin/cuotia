@@ -43,6 +43,8 @@ pub enum CircleError {
     EarnNotEnabled = 23,
     EarnAlreadyAccepted = 24,
     InvalidEarnAsset = 25,
+    AutoPayDisabled = 26,
+    NothingToCollect = 27,
 }
 
 #[contracttype]
@@ -81,6 +83,8 @@ pub struct Circle {
     pub earn_enabled: bool,
     pub earn_accepted: Vec<bool>,
     pub earn_shares: Vec<i128>,
+    /// Per-member opt-in for automatic contributions. Off by default.
+    pub auto_pay: Vec<bool>,
 }
 
 #[contractevent(topics = ["created"])]
@@ -123,6 +127,24 @@ pub struct ClaimRecorded {
     pub id: u32,
     pub member: Address,
     pub amount: i128,
+}
+
+#[contractevent(topics = ["auto_pay"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutoPayChanged {
+    #[topic]
+    pub id: u32,
+    pub member: Address,
+    pub enabled: bool,
+}
+
+#[contractevent(topics = ["auto_paid"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutoContributionCollected {
+    #[topic]
+    pub id: u32,
+    pub member: Address,
+    pub round: u32,
 }
 
 #[contracttype]
@@ -221,6 +243,7 @@ impl Cuotia {
             earn_enabled,
             earn_accepted,
             earn_shares: Vec::from_array(&env, [0_i128; 12]).slice(0..member_count),
+            auto_pay: Vec::from_array(&env, [false; 12]).slice(0..member_count),
         };
 
         let circle_key = DataKey::Circle(id);
@@ -252,41 +275,60 @@ impl Cuotia {
         member.require_auth();
         let mut circle = load(&env, id)?;
         require_active(&circle)?;
-        if circle.earn_enabled && !all_consent(&circle.earn_accepted) {
-            return Err(CircleError::EarnConsentMissing);
-        }
-        let now = env.ledger().timestamp();
-        let deadline = circle.round_due_at.checked_add(GRACE_PERIOD_SECONDS)
-            .ok_or(CircleError::TimestampOverflow)?;
-        if now > deadline {
-            return Err(CircleError::ContributionWindowClosed);
-        }
         let index = member_index(&circle.members, &member).ok_or(CircleError::NotAMember)?;
-        if circle.contributed.get(index).unwrap_or(false) {
-            return Err(CircleError::AlreadyContributed);
+        record_contribution(&env, id, &mut circle, index, &member, false)
+    }
+
+    /// A member opts in or out of automatic contributions for this circle. Enabling grants the
+    /// contract a token allowance for exactly this member's remaining contributions in this
+    /// circle (added to any allowance already granted to Cuotia by other circles); disabling
+    /// removes that amount again. The member can change this at any time.
+    pub fn set_auto_pay(env: Env, id: u32, member: Address, enabled: bool) -> Result<(), CircleError> {
+        member.require_auth();
+        let mut circle = load(&env, id)?;
+        require_active(&circle)?;
+        let index = member_index(&circle.members, &member).ok_or(CircleError::NotAMember)?;
+        if circle.auto_pay.get(index).unwrap_or(false) == enabled {
+            return Ok(());
         }
-        let paid_total = circle.paid_totals.get(index).unwrap_or(0)
-            .checked_add(circle.contribution).ok_or(CircleError::AmountOverflow)?;
-        token::Client::new(&env, &circle.token).transfer(
-            &member,
-            &env.current_contract_address(),
-            &circle.contribution,
-        );
-        if circle.earn_enabled {
-            let minted_shares = deposit_into_writz(&env, circle.contribution)?;
-            let current_shares = circle.earn_shares.get(index).unwrap_or(0)
-                .checked_add(minted_shares).ok_or(CircleError::AmountOverflow)?;
-            circle.earn_shares.set(index, current_shares);
+        let remaining = remaining_contributions(&circle, index)?;
+        if enabled && remaining == 0 {
+            return Err(CircleError::NothingToCollect);
         }
-        circle.contributed.set(index, true);
-        circle.paid_totals.set(index, paid_total);
+        let token = token::Client::new(&env, &circle.token);
+        let spender = env.current_contract_address();
+        let current = token.allowance(&member, &spender);
+        let allowance = if enabled {
+            current.checked_add(remaining).ok_or(CircleError::AmountOverflow)?
+        } else if current > remaining {
+            current - remaining
+        } else {
+            0
+        };
+        let expiration = if allowance > 0 {
+            env.ledger().max_live_until_ledger()
+        } else {
+            env.ledger().sequence()
+        };
+        token.approve(&member, &spender, &allowance, &expiration);
+        circle.auto_pay.set(index, enabled);
         save(&env, id, &circle);
-        ContributionRecorded { id, member, round: circle.round }.publish(&env);
-        if circle.round + 1 == circle.rounds_total && all_contributed(&circle.contributed) {
-            circle.status = CircleStatus::Complete;
-            save(&env, id, &circle);
-        }
+        AutoPayChanged { id, member, enabled }.publish(&env);
         Ok(())
+    }
+
+    /// Anyone (for example a scheduled job) may collect the current round's contribution from a
+    /// member who enabled auto-pay. The member does not sign: the contract pulls exactly one
+    /// contribution with the allowance granted in `set_auto_pay`, under the same rules as a
+    /// manual contribution (open window, not yet paid this round, Earn consent complete).
+    pub fn collect(env: Env, id: u32, member: Address) -> Result<(), CircleError> {
+        let mut circle = load(&env, id)?;
+        require_active(&circle)?;
+        let index = member_index(&circle.members, &member).ok_or(CircleError::NotAMember)?;
+        if !circle.auto_pay.get(index).unwrap_or(false) {
+            return Err(CircleError::AutoPayDisabled);
+        }
+        record_contribution(&env, id, &mut circle, index, &member, true)
     }
 
     /// Each member individually opts into Writz before any contributions are accepted.
@@ -457,6 +499,63 @@ fn withdraw_writz_shares(env: &Env, shares: i128) -> Result<i128, CircleError> {
     Ok(amounts.get(0).unwrap_or(0))
 }
 
+fn record_contribution(
+    env: &Env,
+    id: u32,
+    circle: &mut Circle,
+    index: u32,
+    member: &Address,
+    automatic: bool,
+) -> Result<(), CircleError> {
+    if circle.earn_enabled && !all_consent(&circle.earn_accepted) {
+        return Err(CircleError::EarnConsentMissing);
+    }
+    let now = env.ledger().timestamp();
+    let deadline = circle.round_due_at.checked_add(GRACE_PERIOD_SECONDS)
+        .ok_or(CircleError::TimestampOverflow)?;
+    if now > deadline {
+        return Err(CircleError::ContributionWindowClosed);
+    }
+    if circle.contributed.get(index).unwrap_or(false) {
+        return Err(CircleError::AlreadyContributed);
+    }
+    let paid_total = circle.paid_totals.get(index).unwrap_or(0)
+        .checked_add(circle.contribution).ok_or(CircleError::AmountOverflow)?;
+    let token = token::Client::new(env, &circle.token);
+    let contract = env.current_contract_address();
+    if automatic {
+        // Cuotia is the spender; it only pulls what this member owes for this round.
+        token.transfer_from(&contract, member, &contract, &circle.contribution);
+    } else {
+        token.transfer(member, &contract, &circle.contribution);
+    }
+    if circle.earn_enabled {
+        let minted_shares = deposit_into_writz(env, circle.contribution)?;
+        let current_shares = circle.earn_shares.get(index).unwrap_or(0)
+            .checked_add(minted_shares).ok_or(CircleError::AmountOverflow)?;
+        circle.earn_shares.set(index, current_shares);
+    }
+    circle.contributed.set(index, true);
+    circle.paid_totals.set(index, paid_total);
+    if circle.round + 1 == circle.rounds_total && all_contributed(&circle.contributed) {
+        circle.status = CircleStatus::Complete;
+    }
+    save(env, id, circle);
+    if automatic {
+        AutoContributionCollected { id, member: member.clone(), round: circle.round }.publish(env);
+    } else {
+        ContributionRecorded { id, member: member.clone(), round: circle.round }.publish(env);
+    }
+    Ok(())
+}
+
+/// Amount this member still owes in the circle: remaining rounds, minus the current one if paid.
+fn remaining_contributions(circle: &Circle, index: u32) -> Result<i128, CircleError> {
+    let paid_current = if circle.contributed.get(index).unwrap_or(false) { 1 } else { 0 };
+    let rounds = circle.rounds_total.saturating_sub(circle.round).saturating_sub(paid_current);
+    circle.contribution.checked_mul(rounds as i128).ok_or(CircleError::AmountOverflow)
+}
+
 fn require_active(circle: &Circle) -> Result<(), CircleError> {
     if circle.status != CircleStatus::Active { return Err(CircleError::CircleNotActive); }
     Ok(())
@@ -494,3 +593,6 @@ fn frequency_interval(env: &Env, frequency: &String) -> u64 {
     else if frequency == &String::from_str(env, "biweekly") { SECONDS_PER_DAY * 14 }
     else { SECONDS_PER_DAY * 30 }
 }
+
+#[cfg(test)]
+mod test;

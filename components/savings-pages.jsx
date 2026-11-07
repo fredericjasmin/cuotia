@@ -10,6 +10,7 @@ import {
   cancelUnstartedSavingsCircle,
   claimSavingsCircle,
   contributeToSavingsCircle,
+  setSavingsCircleAutoPay,
   createSavingsCircle,
   getSavingsCircleActivity,
   getSavingsCircle,
@@ -33,6 +34,8 @@ const ACTION_TOAST_KEYS = {
   accept_earn: 'toast.acceptedEarn',
   cancel_unstarted: 'toast.cancelledUnstarted',
   advance: 'toast.advanced',
+  auto_pay_on: 'toast.autoPayOn',
+  auto_pay_off: 'toast.autoPayOff',
 };
 const shortAddress = (address) => address ? `${address.slice(0, 5)}…${address.slice(-5)}` : '';
 
@@ -109,6 +112,8 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
   const earnAcceptedCount = circle.earnAccepted.filter(Boolean).length;
   const totalVaultValue = writzRate ? circle.earnShares.reduce((sum, shares) => sum + writzSharesToUsdc(shares, writzRate), 0n) : null;
   const vaultDeltaPercent = totalVaultValue !== null && circle.pot > 0 ? ((Number(totalVaultValue) / 10_000_000) - circle.pot) / circle.pot * 100 : null;
+  const myAutoPay = isMember && Boolean(circle.autoPay?.[memberIndex]);
+  const canToggleAutoPay = circle.status === 'active' && isMember && circle.earnReady;
   const canAcceptEarn = circle.status === 'active' && circle.earnEnabled && isMember && !circle.earnAccepted[memberIndex] && circle.pot === 0;
   const canCancelUnstarted = circle.status === 'active' && circle.earnEnabled && isMember && circle.pot === 0;
   const assetLabel = circle.earnEnabled ? 'Blend USDC' : 'Circle USDC';
@@ -153,7 +158,11 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
       {!compact && canAcceptEarn && <WalletActivationNote walletAddress={walletAddress} walletProvider={walletProvider} earnApproval />}
     </div>}
     {!compact && circle.status === 'active' && <p className={`circle-due${expired && !allPaid ? ' is-overdue' : ''}`}>{allPaid && circle.round + 1 < circle.roundsTotal ? t('card.allPaid', { date: dateLabel(circle.roundDueAt) }) : t('card.graceNote', { date: dateLabel(deadline) })}</p>}
-    {!compact && <ul className="member-status-list" aria-label={t('card.memberStatusAria')}>{circle.members.map((member, index) => <li key={member.address}><span className={`member-status-dot ${circle.contributions[index]?.paid ? 'is-paid' : ''}`} /><span className="member-status-name">{member.name}{member.address === walletAddress ? t('card.you') : ''}</span><span className="member-status-address">{shortAddress(member.address)}</span><span className="member-status-label">{circle.earnEnabled && !circle.earnAccepted[index] ? t('card.consentPending') : ''}{money(circle.contributions[index]?.total)} {assetLabel} · {memberStatus(index)}{circle.earnEnabled && writzRate !== null && Number(circle.earnShares?.[index]) > 0 ? t('card.inVault', { amount: preciseMoney(Number(writzSharesToUsdc(circle.earnShares[index], writzRate)) / 10_000_000) }) : ''}</span></li>)}</ul>}
+    {!compact && <ul className="member-status-list" aria-label={t('card.memberStatusAria')}>{circle.members.map((member, index) => <li key={member.address}><span className={`member-status-dot ${circle.contributions[index]?.paid ? 'is-paid' : ''}`} /><span className="member-status-name">{member.name}{member.address === walletAddress ? t('card.you') : ''}</span><span className="member-status-address">{shortAddress(member.address)}</span><span className="member-status-label">{circle.earnEnabled && !circle.earnAccepted[index] ? t('card.consentPending') : ''}{money(circle.contributions[index]?.total)} {assetLabel} · {memberStatus(index)}{circle.status === 'active' && circle.autoPay?.[index] ? t('auto.memberLabel') : ''}{circle.earnEnabled && writzRate !== null && Number(circle.earnShares?.[index]) > 0 ? t('card.inVault', { amount: preciseMoney(Number(writzSharesToUsdc(circle.earnShares[index], writzRate)) / 10_000_000) }) : ''}</span></li>)}</ul>}
+    {!compact && canToggleAutoPay && <div className={`auto-pay-panel${myAutoPay ? ' is-on' : ''}`}>
+      <div className="auto-pay-copy"><strong>{t('auto.title')} <span className="auto-pay-state">{myAutoPay ? t('auto.on') : t('auto.off')}</span></strong><p>{t(myAutoPay ? 'auto.bodyOn' : 'auto.bodyOff', { amount: money(circle.contribution), asset: assetLabel })}</p>{myAutoPay && !myContribution?.paid && !expired && <p className="form-help">{t('auto.pendingCollection')}</p>}</div>
+      <button className={myAutoPay ? 'button-secondary' : 'button-primary'} type="button" role="switch" aria-checked={myAutoPay} disabled={actionPending} onClick={() => runAction(myAutoPay ? 'auto_pay_off' : 'auto_pay_on')}>{busy ? waiting : myAutoPay ? t('auto.disable') : t('auto.enable')}</button>
+    </div>}
     <div className="circle-controls">
       {!walletAddress && !circle.earnEnabled && <div className="circle-connect-prompt"><span>{t('card.connectPrompt')}</span><WalletConnectOptions compact connectWallet={onConnectBrowser} connectCavosWallet={onConnectCavos} cavosEnabled={cavosEnabled} walletBusy={walletBusy} /></div>}
       {walletAddress && !isMember && <span className="complete-label">{t('card.notMember')}</span>}
@@ -185,6 +194,8 @@ async function runSavingsAction(kind, input) {
   if (kind === 'claim') await claimSavingsCircle(input);
   if (kind === 'accept_earn') await acceptSavingsCircleEarn(input);
   if (kind === 'cancel_unstarted') await cancelUnstartedSavingsCircle(input);
+  if (kind === 'auto_pay_on') await setSavingsCircleAutoPay({ ...input, enabled: true });
+  if (kind === 'auto_pay_off') await setSavingsCircleAutoPay({ ...input, enabled: false });
 }
 
 export function SavingsCirclesPage() {
