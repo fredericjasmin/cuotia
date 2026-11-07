@@ -20,44 +20,65 @@ import {
 } from '../lib/cuotia-chain.mjs';
 import { isChainConfigured } from '../lib/chain-config.mjs';
 import { useCuotia } from './app-provider.jsx';
+import { useI18n } from './i18n-provider.jsx';
 import { ActivitySkeleton, CircleCollectionSkeleton, CircleDetailSkeleton } from './loading-skeletons.jsx';
 import UiIcon from './ui-icon.jsx';
 
 const MAX_MEMBERS = 12;
-const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const preciseMoney = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 7 });
+const FREQUENCIES = ['weekly', 'biweekly', 'monthly'];
+const ACTION_TOAST_KEYS = {
+  contribute: 'toast.contributed',
+  claim: 'toast.claimed',
+  cancel: 'toast.cancelled',
+  accept_earn: 'toast.acceptedEarn',
+  cancel_unstarted: 'toast.cancelledUnstarted',
+  advance: 'toast.advanced',
+};
 const shortAddress = (address) => address ? `${address.slice(0, 5)}…${address.slice(-5)}` : '';
-const dateLabel = (timestamp) => timestamp ? new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(new Date(timestamp * 1000)) + ' UTC' : '—';
-const frequencyLabel = (frequency) => ({ weekly: 'Weekly', biweekly: 'Every two weeks', monthly: 'Monthly' })[frequency] || frequency;
+
+// Locale-aware number, date and frequency helpers (es-CR or en-US).
+function useFormatters() {
+  const { t, formatNumber, formatDate } = useI18n();
+  return {
+    money: (value) => formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    preciseMoney: (value) => formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 7 }),
+    dateLabel: (timestamp) => timestamp ? `${formatDate(new Date(timestamp * 1000), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC` : '—',
+    frequencyLabel: (frequency) => FREQUENCIES.includes(frequency) ? t(`freq.${frequency}`) : frequency,
+  };
+}
 
 function SetupNote() {
-  return <section className="page-state"><span className="empty-symbol"><UiIcon as={CircleAlert} size={34} /></span><h2>Savings circles are not configured in this environment.</h2><p>The circle contract keeps each member’s contributions separate and supports final claims or refunds after cancellation. Configure <code>NEXT_PUBLIC_CUOTIA_CONTRACT_ID</code> with the appropriate Testnet instance.</p></section>;
+  const { t } = useI18n();
+  return <section className="page-state"><span className="empty-symbol"><UiIcon as={CircleAlert} size={34} /></span><h2>{t('setup.title')}</h2><p>{t('setup.bodyStart')}<code>NEXT_PUBLIC_CUOTIA_CONTRACT_ID</code>{t('setup.bodyEnd')}</p></section>;
 }
 
 function WalletConnectOptions({ connectWallet, connectCavosWallet, cavosEnabled, walletBusy, compact = false }) {
+  const { t } = useI18n();
   return <div className={`wallet-connect-options${compact ? ' is-compact' : ''}`}>
-    <button className="button-primary" type="button" disabled={walletBusy} onClick={() => connectWallet().catch(() => {})}>{walletBusy ? 'Connecting…' : 'Browser wallet'}</button>
-    {cavosEnabled && <button className="button-secondary" type="button" disabled={walletBusy} onClick={() => connectCavosWallet().catch(() => {})}>Email or social login</button>}
+    <button className="button-primary" type="button" disabled={walletBusy} onClick={() => connectWallet().catch(() => {})}>{walletBusy ? t('wallet.connecting') : t('wallet.browser')}</button>
+    {cavosEnabled && <button className="button-secondary" type="button" disabled={walletBusy} onClick={() => connectCavosWallet().catch(() => {})}>{t('wallet.cavos')}</button>}
   </div>;
 }
 
 function WalletActivationNote({ walletAddress, walletProvider, earnApproval = false, creating = false }) {
+  const { t } = useI18n();
   return <div className="wallet-activation-note" role="note">
-    <p>{walletProvider === 'cavos'
-      ? 'First use? Cavos creates this Stellar Testnet account with its first sponsored action. If it fails, check that sponsorship is enabled.'
-      : 'First use? Activate this browser wallet on Stellar Testnet with XLM before signing.'}
-      {earnApproval ? ' This Writz approval needs no USDC.' : creating ? ' Creating the circle moves no USDC; contributions require it later.' : ' Contributions also need the circle’s USDC.'}</p>
-    {walletProvider !== 'cavos' && walletAddress && <a href={`https://friendbot.stellar.org/?addr=${encodeURIComponent(walletAddress)}`} target="_blank" rel="noreferrer">Activate this wallet with Testnet XLM <UiIcon as={ExternalLink} size={14} /></a>}
+    <p>{walletProvider === 'cavos' ? t('activation.cavos') : t('activation.browser')}
+      {earnApproval ? t('activation.earnApproval') : creating ? t('activation.creating') : t('activation.contributions')}</p>
+    {walletProvider !== 'cavos' && walletAddress && <a href={`https://friendbot.stellar.org/?addr=${encodeURIComponent(walletAddress)}`} target="_blank" rel="noreferrer">{t('activation.friendbot')} <UiIcon as={ExternalLink} size={14} /></a>}
   </div>;
 }
 
 function SavingsActivity({ activity, loading, error }) {
-  return <section className="circle-activity" aria-labelledby="savings-activity-title"><h2 id="savings-activity-title">Recent Stellar activity</h2>
-    {loading ? <ActivitySkeleton /> : error ? <p role="status">Could not load activity: {error}</p> : activity.length ? <ol>{activity.map((item) => <li key={`${item.hash}-${item.ledger}`}><span>{item.label}</span><a href={`https://stellar.expert/explorer/testnet/tx/${item.hash}`} target="_blank" rel="noreferrer">View transaction <UiIcon as={ExternalLink} size={14} /></a><time dateTime={item.timestamp}>{new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(new Date(item.timestamp))} UTC</time></li>)}</ol> : <p>No matching events were found in the recent Testnet history for this contract. Older events may have expired from RPC history or belong to another contract deployment.</p>}
+  const { t, tError, formatDate } = useI18n();
+  return <section className="circle-activity" aria-labelledby="savings-activity-title"><h2 id="savings-activity-title">{t('activity.title')}</h2>
+    {loading ? <ActivitySkeleton /> : error ? <p role="status">{t('activity.error', { error: tError(error, 'activity.rpcError') })}</p> : activity.length ? <ol>{activity.map((item) => <li key={`${item.hash}-${item.ledger}`}><span>{item.labelKey ? t(item.labelKey) : item.label}</span><a href={`https://stellar.expert/explorer/testnet/tx/${item.hash}`} target="_blank" rel="noreferrer">{t('activity.viewTx')} <UiIcon as={ExternalLink} size={14} /></a><time dateTime={item.timestamp}>{formatDate(new Date(item.timestamp), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC</time></li>)}</ol> : <p>{t('activity.empty')}</p>}
   </section>;
 }
 
 function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, onTrustlineSetup, onConnectBrowser, onConnectCavos, cavosEnabled, walletBusy, busy, actionPending = false, showToast, compact = false }) {
+  const { t, tError, formatNumber } = useI18n();
+  const { money, preciseMoney, dateLabel, frequencyLabel } = useFormatters();
   const [now, setNow] = useState(0);
   const [trustlineSetupRequired, setTrustlineSetupRequired] = useState(false);
   const [trustlineBusy, setTrustlineBusy] = useState(false);
@@ -92,6 +113,11 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
   const canCancelUnstarted = circle.status === 'active' && circle.earnEnabled && isMember && circle.pot === 0;
   const assetLabel = circle.earnEnabled ? 'Blend USDC' : 'Circle USDC';
   const contributionPercent = Math.round((paidCount / circle.members.length) * 100);
+  const waiting = t('common.waitingSignature');
+  const roundChip = circle.status === 'active'
+    ? t('card.round', { current: circle.round + 1, total: circle.roundsTotal })
+    : circle.status === 'complete' ? t('card.complete') : circle.status === 'cancelled' ? t('card.cancelled') : t('card.statusUnknown');
+  const vaultDelta = vaultDeltaPercent !== null ? t('card.vaultDelta', { delta: formatNumber(vaultDeltaPercent, { minimumFractionDigits: 3, maximumFractionDigits: 3, signDisplay: 'always' }) }) : '';
   async function runAction(kind) {
     try { await onAction(circle.id, kind); }
     catch (cause) { if (cause?.code === 'USDC_TRUSTLINE_REQUIRED') setTrustlineSetupRequired(true); }
@@ -103,85 +129,100 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
     try {
       await onTrustlineSetup({ earnEnabled: circle.earnEnabled });
       setTrustlineSetupRequired(false);
-      showToast('USDC is set up for this wallet.');
-    } catch (cause) { showToast(cause.message || 'Could not set up USDC for this wallet.', 'error'); }
+      showToast(t('trustline.done'));
+    } catch (cause) { showToast(tError(cause, 'trustline.failed'), 'error'); }
     finally { trustlineLock.current = false; setTrustlineBusy(false); }
+  }
+  function memberStatus(index) {
+    const entry = circle.contributions[index];
+    return entry?.claimed ? t('status.claimed') : entry?.paid ? t('status.paid') : t('status.pending');
   }
 
   return <article className="circle-card savings-card">
-    <div className="circle-heading"><div><span className="circle-meta">Stellar Testnet · {circle.earnEnabled ? 'Writz Earn · Blend USDC' : 'Circle USDC'} · Savings circle</span><h3><Link href={`/savings/${circle.id}`}>{circle.name}</Link></h3><p>{circle.members.length} members <span>·</span> {frequencyLabel(circle.frequency)} <span>·</span> {circle.roundsTotal} rounds <span>·</span> {money(circle.contribution)} {assetLabel} per member</p>{circle.earnEnabled && !compact && <p className="form-help">Writz Earn’s vault currently uses Blend Testnet USDC underneath.</p>}</div><span className="round-chip">{circle.status === 'active' ? `Round ${circle.round + 1} / ${circle.roundsTotal}` : circle.status === 'complete' ? 'Complete' : circle.status === 'cancelled' ? 'Cancelled' : 'Status unavailable'}</span></div>
-    <div className="progress-track" role="progressbar" aria-label="Round contributions" aria-valuenow={paidCount} aria-valuemin="0" aria-valuemax={circle.members.length}><i style={{ width: `${contributionPercent}%` }} /></div>
-    <div className="circle-stats"><div><span>Contributions this round</span><b>{paidCount} / {circle.members.length}</b></div><div><span>Total contributed</span><b>{money(circle.pot)} {assetLabel}</b></div>{circle.earnEnabled && <div><span>Vault value today{vaultDeltaPercent !== null ? ` (${vaultDeltaPercent >= 0 ? '+' : ''}${vaultDeltaPercent.toFixed(3)}% vs contributed)` : ''}</span><b>{totalVaultValue !== null ? `${preciseMoney(Number(totalVaultValue) / 10_000_000)} Blend USDC` : '—'}</b></div>}<div><span>Round deadline</span><b>{dateLabel(circle.roundDueAt)}</b></div></div>
+    <div className="circle-heading"><div><span className="circle-meta">{t('card.meta', { asset: circle.earnEnabled ? 'Writz Earn · Blend USDC' : 'Circle USDC' })}</span><h3><Link href={`/savings/${circle.id}`}>{circle.name}</Link></h3><p>{t('card.members', { count: circle.members.length })} <span>·</span> {frequencyLabel(circle.frequency)} <span>·</span> {t('card.rounds', { count: circle.roundsTotal })} <span>·</span> {t('card.perMember', { amount: money(circle.contribution), asset: assetLabel })}</p>{circle.earnEnabled && !compact && <p className="form-help">{t('card.blendNote')}</p>}</div><span className="round-chip">{roundChip}</span></div>
+    <div className="progress-track" role="progressbar" aria-label={t('card.progressAria')} aria-valuenow={paidCount} aria-valuemin="0" aria-valuemax={circle.members.length}><i style={{ width: `${contributionPercent}%` }} /></div>
+    <div className="circle-stats"><div><span>{t('card.contributionsThisRound')}</span><b>{paidCount} / {circle.members.length}</b></div><div><span>{t('card.totalContributed')}</span><b>{money(circle.pot)} {assetLabel}</b></div>{circle.earnEnabled && <div><span>{t('card.vaultValue')}{vaultDelta}</span><b>{totalVaultValue !== null ? `${preciseMoney(Number(totalVaultValue) / 10_000_000)} Blend USDC` : '—'}</b></div>}<div><span>{t('card.deadline')}</span><b>{dateLabel(circle.roundDueAt)}</b></div></div>
     {circle.earnEnabled && <div className={`earn-consensus ${compact ? 'is-compact' : ''}`}>
-      <div className="earn-consensus-heading"><span className="earn-consensus-mark"><UiIcon as={TrendingUp} size={17} /></span><div><strong>Writz Earn consent</strong><span>{earnAcceptedCount} of {circle.members.length} approved{!circle.earnReady && isMember && !circle.earnAccepted[memberIndex] ? ' · yours is pending' : ''}</span></div></div>
-      {!compact && <p className="earn-consensus-copy">{circle.earnReady ? 'Everyone approved. Contributions go to the vault; each member later claims the value their shares recover, which can rise or fall.' : 'Everyone must approve before contributions open. Approval does not move funds; each contribution is signed separately.'}</p>}
+      <div className="earn-consensus-heading"><span className="earn-consensus-mark"><UiIcon as={TrendingUp} size={17} /></span><div><strong>{t('consent.title')}</strong><span>{t('consent.count', { accepted: earnAcceptedCount, total: circle.members.length })}{!circle.earnReady && isMember && !circle.earnAccepted[memberIndex] ? t('consent.yoursPending') : ''}</span></div></div>
+      {!compact && <p className="earn-consensus-copy">{circle.earnReady ? t('consent.ready') : t('consent.waiting')}</p>}
       {!compact && <div className="earn-consensus-actions">
-        {circle.status === 'active' && !circle.earnReady && !walletAddress && <><p className="form-help">Connect to review and approve Writz Earn consent.</p><WalletConnectOptions compact connectWallet={onConnectBrowser} connectCavosWallet={onConnectCavos} cavosEnabled={cavosEnabled} walletBusy={walletBusy} /></>}
-        {canAcceptEarn && <button className="button-consent" type="button" disabled={actionPending} onClick={() => runAction('accept_earn')}><span className="consent-check"><UiIcon as={Check} size={15} /></span><span className="consent-copy"><strong>{busy ? 'Waiting for signature…' : 'Approve Writz Earn'}</strong><small>Approval only · no funds move</small></span></button>}
-        {canCancelUnstarted && <div className="earn-decline"><button className="button-decline" type="button" disabled={actionPending} onClick={() => runAction('cancel_unstarted')}>Decline and cancel circle</button><span>Cancels for everyone before contributions begin.</span></div>}
+        {circle.status === 'active' && !circle.earnReady && !walletAddress && <><p className="form-help">{t('consent.connect')}</p><WalletConnectOptions compact connectWallet={onConnectBrowser} connectCavosWallet={onConnectCavos} cavosEnabled={cavosEnabled} walletBusy={walletBusy} /></>}
+        {canAcceptEarn && <button className="button-consent" type="button" disabled={actionPending} onClick={() => runAction('accept_earn')}><span className="consent-check"><UiIcon as={Check} size={15} /></span><span className="consent-copy"><strong>{busy ? waiting : t('consent.approve')}</strong><small>{t('consent.approveNote')}</small></span></button>}
+        {canCancelUnstarted && <div className="earn-decline"><button className="button-decline" type="button" disabled={actionPending} onClick={() => runAction('cancel_unstarted')}>{t('consent.decline')}</button><span>{t('consent.declineNote')}</span></div>}
       </div>}
       {!compact && canAcceptEarn && <WalletActivationNote walletAddress={walletAddress} walletProvider={walletProvider} earnApproval />}
     </div>}
-    {!compact && circle.status === 'active' && <p className={`circle-due${expired && !allPaid ? ' is-overdue' : ''}`}>{allPaid && circle.round + 1 < circle.roundsTotal ? `All members paid. Next round can open after ${dateLabel(circle.roundDueAt)}.` : `If this round is still incomplete after ${dateLabel(deadline)}, a member can cancel it manually. It will not cancel automatically.`}</p>}
-    {!compact && <ul className="member-status-list" aria-label="Member status">{circle.members.map((member, index) => <li key={member.address}><span className={`member-status-dot ${circle.contributions[index]?.paid ? 'is-paid' : ''}`} /><span className="member-status-name">{member.name}{member.address === walletAddress ? ' · you' : ''}</span><span className="member-status-address">{shortAddress(member.address)}</span><span className="member-status-label">{circle.earnEnabled && !circle.earnAccepted[index] ? 'Writz consent pending · ' : ''}{money(circle.contributions[index]?.total)} {assetLabel} · {circle.contributions[index]?.claimed ? 'Claimed' : circle.contributions[index]?.paid ? 'Paid this round' : 'Pending'}{circle.earnEnabled && writzRate !== null && Number(circle.earnShares?.[index]) > 0 ? ` · now ${preciseMoney(Number(writzSharesToUsdc(circle.earnShares[index], writzRate)) / 10_000_000)} in vault` : ''}</span></li>)}</ul>}
+    {!compact && circle.status === 'active' && <p className={`circle-due${expired && !allPaid ? ' is-overdue' : ''}`}>{allPaid && circle.round + 1 < circle.roundsTotal ? t('card.allPaid', { date: dateLabel(circle.roundDueAt) }) : t('card.graceNote', { date: dateLabel(deadline) })}</p>}
+    {!compact && <ul className="member-status-list" aria-label={t('card.memberStatusAria')}>{circle.members.map((member, index) => <li key={member.address}><span className={`member-status-dot ${circle.contributions[index]?.paid ? 'is-paid' : ''}`} /><span className="member-status-name">{member.name}{member.address === walletAddress ? t('card.you') : ''}</span><span className="member-status-address">{shortAddress(member.address)}</span><span className="member-status-label">{circle.earnEnabled && !circle.earnAccepted[index] ? t('card.consentPending') : ''}{money(circle.contributions[index]?.total)} {assetLabel} · {memberStatus(index)}{circle.earnEnabled && writzRate !== null && Number(circle.earnShares?.[index]) > 0 ? t('card.inVault', { amount: preciseMoney(Number(writzSharesToUsdc(circle.earnShares[index], writzRate)) / 10_000_000) }) : ''}</span></li>)}</ul>}
     <div className="circle-controls">
-      {!walletAddress && !circle.earnEnabled && <div className="circle-connect-prompt"><span>Connect to check your membership</span><WalletConnectOptions compact connectWallet={onConnectBrowser} connectCavosWallet={onConnectCavos} cavosEnabled={cavosEnabled} walletBusy={walletBusy} /></div>}
-      {walletAddress && !isMember && <span className="complete-label">Your wallet is not a member of this circle.</span>}
+      {!walletAddress && !circle.earnEnabled && <div className="circle-connect-prompt"><span>{t('card.connectPrompt')}</span><WalletConnectOptions compact connectWallet={onConnectBrowser} connectCavosWallet={onConnectCavos} cavosEnabled={cavosEnabled} walletBusy={walletBusy} /></div>}
+      {walletAddress && !isMember && <span className="complete-label">{t('card.notMember')}</span>}
       {!compact && walletAddress && !canAcceptEarn && (canContribute || canAdvance || canCancel || canCancelUnstarted || canClaim) && <WalletActivationNote walletAddress={walletAddress} walletProvider={walletProvider} />}
-      {canContribute && <button className="button-primary" disabled={actionPending} onClick={() => runAction('contribute')}>{busy ? 'Waiting for signature…' : `Contribute ${money(circle.contribution)} ${assetLabel}`} <UiIcon as={ArrowUpRight} size={16} /></button>}
-      {isMember && myContribution?.paid && circle.status === 'active' && <span className="complete-label"><UiIcon as={Check} size={15} /> Your contribution is recorded for this round.</span>}
-      {canAdvance && <button className="button-secondary" disabled={actionPending} onClick={() => runAction('advance')}>{busy ? 'Waiting for signature…' : 'Open next round'} <UiIcon as={ArrowRight} size={16} /></button>}
-      {canCancel && <button className="button-secondary" disabled={actionPending} onClick={() => runAction('cancel')}>{busy ? 'Waiting for signature…' : 'Cancel and enable refunds'}</button>}
-      {canClaim && <button className="button-primary" disabled={actionPending} onClick={() => runAction('claim')}>{busy ? 'Waiting for signature…' : circle.earnEnabled ? 'Claim Writz share' : `Claim ${money(myContribution.total)} Circle USDC`} <UiIcon as={ArrowUpRight} size={16} /></button>}
-      {trustlineSetupRequired && <div className="inline-note trustline-setup-note" role="status"><p>This wallet needs a {assetLabel} trustline. Authorizing it does not deposit tokens. Browser wallets also need Testnet XLM for account setup, fees, and reserve; Cavos account setup and fees depend on sponsorship.</p>{walletProvider !== 'cavos' && walletAddress && <a href={`https://friendbot.stellar.org/?addr=${encodeURIComponent(walletAddress)}`} target="_blank" rel="noreferrer">Activate this wallet with Testnet XLM <UiIcon as={ExternalLink} size={14} /></a>}<button className="button-secondary" type="button" disabled={actionPending || trustlineBusy} onClick={setupTrustline}>{trustlineBusy ? 'Waiting for signature…' : `Authorize ${assetLabel} for this wallet`}</button><a href={circle.earnEnabled ? 'https://testnet.blend.capital' : 'https://faucet.circle.com/'} target="_blank" rel="noreferrer">Get {assetLabel} Testnet <UiIcon as={ExternalLink} size={14} /></a></div>}
-      {isMember && myContribution?.claimed && <span className="complete-label"><UiIcon as={Check} size={15} /> Your funds have been claimed.</span>}
-      {compact && <Link className="button-quiet" href={`/savings/${circle.id}`}>Circle details <UiIcon as={ArrowRight} size={15} /></Link>}
+      {canContribute && <button className="button-primary" disabled={actionPending} onClick={() => runAction('contribute')}>{busy ? waiting : t('card.contribute', { amount: money(circle.contribution), asset: assetLabel })} <UiIcon as={ArrowUpRight} size={16} /></button>}
+      {isMember && myContribution?.paid && circle.status === 'active' && <span className="complete-label"><UiIcon as={Check} size={15} /> {t('card.recorded')}</span>}
+      {canAdvance && <button className="button-secondary" disabled={actionPending} onClick={() => runAction('advance')}>{busy ? waiting : t('card.advance')} <UiIcon as={ArrowRight} size={16} /></button>}
+      {canCancel && <button className="button-secondary" disabled={actionPending} onClick={() => runAction('cancel')}>{busy ? waiting : t('card.cancel')}</button>}
+      {canClaim && <button className="button-primary" disabled={actionPending} onClick={() => runAction('claim')}>{busy ? waiting : circle.earnEnabled ? t('card.claimWritz') : t('card.claim', { amount: money(myContribution.total) })} <UiIcon as={ArrowUpRight} size={16} /></button>}
+      {trustlineSetupRequired && <div className="inline-note trustline-setup-note" role="status"><p>{t('card.trustlineNote', { asset: assetLabel })}</p>{walletProvider !== 'cavos' && walletAddress && <a href={`https://friendbot.stellar.org/?addr=${encodeURIComponent(walletAddress)}`} target="_blank" rel="noreferrer">{t('activation.friendbot')} <UiIcon as={ExternalLink} size={14} /></a>}<button className="button-secondary" type="button" disabled={actionPending || trustlineBusy} onClick={setupTrustline}>{trustlineBusy ? waiting : t('card.authorize', { asset: assetLabel })}</button><a href={circle.earnEnabled ? 'https://testnet.blend.capital' : 'https://faucet.circle.com/'} target="_blank" rel="noreferrer">{t('card.getAsset', { asset: assetLabel })} <UiIcon as={ExternalLink} size={14} /></a></div>}
+      {isMember && myContribution?.claimed && <span className="complete-label"><UiIcon as={Check} size={15} /> {t('card.claimedDone')}</span>}
+      {compact && <Link className="button-quiet" href={`/savings/${circle.id}`}>{t('card.details')} <UiIcon as={ArrowRight} size={15} /></Link>}
     </div>
   </article>;
 }
 
 function SavingsCollection({ circles, loading, error, retry, busyId, emptyTitle, emptyBody, ...cardProps }) {
+  const { t, tError } = useI18n();
   if (loading) return <CircleCollectionSkeleton />;
-  if (error) return <div className="page-state page-error" role="alert"><strong>Could not load savings circles.</strong><p>{error}</p><button className="button-secondary" onClick={retry}>Try again</button></div>;
-  if (!circles.length) return <div className="page-state"><span className="empty-symbol"><UiIcon as={PiggyBank} size={34} /></span><h2>{emptyTitle || 'No savings circles yet.'}</h2><p>{emptyBody || 'Create one and invite your group.'}</p><Link className="button-primary" href="/savings/create">Create a savings circle</Link></div>;
+  if (error) return <div className="page-state page-error" role="alert"><strong>{t('list.error')}</strong><p>{tError(error)}</p><button className="button-secondary" onClick={retry}>{t('common.retry')}</button></div>;
+  if (!circles.length) return <div className="page-state"><span className="empty-symbol"><UiIcon as={PiggyBank} size={34} /></span><h2>{emptyTitle || t('list.emptyTitle')}</h2><p>{emptyBody || t('list.emptyBody')}</p><Link className="button-primary" href="/savings/create">{t('shell.createCircle')}</Link></div>;
   return <div className="circle-list">{circles.map((circle) => <SavingsCircleCard key={circle.id} circle={circle} compact busy={busyId === circle.id} actionPending={busyId !== null} {...cardProps} />)}</div>;
+}
+
+async function runSavingsAction(kind, input) {
+  if (kind === 'contribute') await contributeToSavingsCircle(input);
+  if (kind === 'advance') await advanceSavingsCircleRound(input);
+  if (kind === 'cancel') await cancelSavingsCircle(input);
+  if (kind === 'claim') await claimSavingsCircle(input);
+  if (kind === 'accept_earn') await acceptSavingsCircleEarn(input);
+  if (kind === 'cancel_unstarted') await cancelUnstartedSavingsCircle(input);
 }
 
 export function SavingsCirclesPage() {
   const { walletAddress, walletProvider, connectWallet, connectCavosWallet, cavosEnabled, walletBusy, showToast } = useCuotia();
+  const { t, tError } = useI18n();
   const [circles, setCircles] = useState([]);
   const [circleFilter, setCircleFilter] = useState('all');
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const actionLock = useRef(false);
   const [nextStartId, setNextStartId] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const loadMoreLock = useRef(false);
-  const [moreError, setMoreError] = useState('');
+  const [moreError, setMoreError] = useState(null);
   const configured = isChainConfigured();
   const refresh = useCallback(async () => {
     if (!configured) { setLoading(false); setNextStartId(null); return; }
-    setLoading(true); setError('');
+    setLoading(true); setError(null);
     try {
       const page = await listSavingsCircles();
       setCircles(page.circles);
       setNextStartId(page.nextStartId);
-      setMoreError('');
+      setMoreError(null);
     }
-    catch (cause) { setError(cause.message); }
+    catch (cause) { setError(cause || new Error('')); }
     finally { setLoading(false); }
   }, [configured]);
   useEffect(() => { refresh(); }, [refresh]);
   async function loadMore() {
     if (nextStartId === null || loadMoreLock.current) return;
     loadMoreLock.current = true;
-    setLoadingMore(true); setMoreError('');
+    setLoadingMore(true); setMoreError(null);
     try {
       const page = await listSavingsCircles(nextStartId);
       setCircles((current) => [...current, ...page.circles]);
       setNextStartId(page.nextStartId);
-    } catch (cause) { setMoreError(cause.message); }
+    } catch (cause) { setMoreError(cause || new Error('')); }
     finally { loadMoreLock.current = false; setLoadingMore(false); }
   }
   async function trustlineSetup({ earnEnabled = false } = {}) {
@@ -194,49 +235,44 @@ export function SavingsCirclesPage() {
     actionLock.current = true;
     setBusyId(circleId);
     try {
-      const input = { address: walletAddress, id: circleId };
-      if (kind === 'contribute') await contributeToSavingsCircle(input);
-      if (kind === 'advance') await advanceSavingsCircleRound(input);
-      if (kind === 'cancel') await cancelSavingsCircle(input);
-      if (kind === 'claim') await claimSavingsCircle(input);
-      if (kind === 'accept_earn') await acceptSavingsCircleEarn(input);
-      if (kind === 'cancel_unstarted') await cancelUnstartedSavingsCircle(input);
-      showToast(kind === 'contribute' ? 'Your contribution was recorded.' : kind === 'claim' ? 'Your claim was sent to your wallet.' : kind === 'cancel' ? 'The circle was cancelled. Members can now claim their own contributions.' : 'The next round is open.');
+      await runSavingsAction(kind, { address: walletAddress, id: circleId });
+      showToast(t(ACTION_TOAST_KEYS[kind] || 'toast.advanced'));
       await refresh();
-    } catch (cause) { showToast(cause.message || 'Could not complete this action.', 'error'); throw cause; }
+    } catch (cause) { showToast(tError(cause, 'toast.actionFailed'), 'error'); throw cause; }
     finally { actionLock.current = false; setBusyId(null); }
   }
   const activeFilter = walletAddress ? circleFilter : 'all';
   const mineCount = walletAddress ? circles.filter((circle) => circle.members.some((member) => member.address === walletAddress)).length : 0;
   const visibleCircles = activeFilter === 'mine' ? circles.filter((circle) => circle.members.some((member) => member.address === walletAddress)) : circles;
-  return <div className="content-page"><div className="page-heading"><div><h1>Savings circles</h1><p>Everyone contributes each period. After all rounds, each member claims their own contributions.</p></div><Link className="button-primary" href="/savings/create"><UiIcon as={Plus} size={17} /> Create a savings circle</Link></div>
-    {walletAddress && <div className="circle-filter" role="group" aria-label="Filter savings circles"><button type="button" className={activeFilter === 'all' ? 'is-active' : ''} aria-pressed={activeFilter === 'all'} onClick={() => setCircleFilter('all')}>All circles</button><button type="button" className={activeFilter === 'mine' ? 'is-active' : ''} aria-pressed={activeFilter === 'mine'} onClick={() => setCircleFilter('mine')}>My circles ({mineCount})</button></div>}
-    {!configured ? <SetupNote /> : <><SavingsCollection circles={visibleCircles} loading={loading} error={error} retry={refresh} emptyTitle={activeFilter === 'mine' ? 'You are not in any circles yet.' : undefined} emptyBody={activeFilter === 'mine' ? 'A circle shows up here when your wallet address is added as a member.' : undefined} walletAddress={walletAddress} walletProvider={walletProvider} busyId={busyId} onAction={(circleId, kind) => act(circleId, kind)} onConnectBrowser={connectWallet} onConnectCavos={connectCavosWallet} cavosEnabled={cavosEnabled} walletBusy={walletBusy} onTrustlineSetup={trustlineSetup} showToast={showToast} />{nextStartId !== null && !loading && !error && <div className="circle-pagination">{moreError && <p role="alert">{moreError}</p>}<button className="button-secondary" type="button" disabled={loadingMore} onClick={loadMore}>{loadingMore ? 'Loading…' : moreError ? 'Try again' : 'Load more savings circles'}</button></div>}</>}
+  return <div className="content-page"><div className="page-heading"><div><h1>{t('nav.savings')}</h1><p>{t('circles.lead')}</p></div><Link className="button-primary" href="/savings/create"><UiIcon as={Plus} size={17} /> {t('shell.createCircle')}</Link></div>
+    {walletAddress && <div className="circle-filter" role="group" aria-label={t('circles.filterAria')}><button type="button" className={activeFilter === 'all' ? 'is-active' : ''} aria-pressed={activeFilter === 'all'} onClick={() => setCircleFilter('all')}>{t('circles.all')}</button><button type="button" className={activeFilter === 'mine' ? 'is-active' : ''} aria-pressed={activeFilter === 'mine'} onClick={() => setCircleFilter('mine')}>{t('circles.mine', { count: mineCount })}</button></div>}
+    {!configured ? <SetupNote /> : <><SavingsCollection circles={visibleCircles} loading={loading} error={error} retry={refresh} emptyTitle={activeFilter === 'mine' ? t('circles.mineEmptyTitle') : undefined} emptyBody={activeFilter === 'mine' ? t('circles.mineEmptyBody') : undefined} walletAddress={walletAddress} walletProvider={walletProvider} busyId={busyId} onAction={(circleId, kind) => act(circleId, kind)} onConnectBrowser={connectWallet} onConnectCavos={connectCavosWallet} cavosEnabled={cavosEnabled} walletBusy={walletBusy} onTrustlineSetup={trustlineSetup} showToast={showToast} />{nextStartId !== null && !loading && !error && <div className="circle-pagination">{moreError && <p role="alert">{tError(moreError)}</p>}<button className="button-secondary" type="button" disabled={loadingMore} onClick={loadMore}>{loadingMore ? t('common.loading') : moreError ? t('common.retry') : t('circles.loadMore')}</button></div>}</>}
   </div>;
 }
 
 export function SavingsDashboardPage() {
   const { walletAddress, walletProvider, connectWallet, connectCavosWallet, cavosEnabled, walletBusy, showToast } = useCuotia();
+  const { t, tError } = useI18n();
   const [circles, setCircles] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const actionLock = useRef(false);
   const [nextStartId, setNextStartId] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const loadMoreLock = useRef(false);
-  const [moreError, setMoreError] = useState('');
+  const [moreError, setMoreError] = useState(null);
   const configured = isChainConfigured();
 
   const refresh = useCallback(async () => {
     if (!walletAddress || !configured) { setCircles([]); setNextStartId(null); setLoading(false); return; }
-    setLoading(true); setError('');
+    setLoading(true); setError(null);
     try {
       const page = await listSavingsCircles();
       setCircles(page.circles.filter((circle) => circle.members.some((member) => member.address === walletAddress)));
       setNextStartId(page.nextStartId);
-      setMoreError('');
-    } catch (cause) { setError(cause.message); }
+      setMoreError(null);
+    } catch (cause) { setError(cause || new Error('')); }
     finally { setLoading(false); }
   }, [walletAddress, configured]);
 
@@ -245,13 +281,13 @@ export function SavingsDashboardPage() {
   async function loadMore() {
     if (nextStartId === null || loadMoreLock.current) return;
     loadMoreLock.current = true;
-    setLoadingMore(true); setMoreError('');
+    setLoadingMore(true); setMoreError(null);
     try {
       const page = await listSavingsCircles(nextStartId);
       const memberCircles = page.circles.filter((circle) => circle.members.some((member) => member.address === walletAddress));
       setCircles((current) => [...current, ...memberCircles]);
       setNextStartId(page.nextStartId);
-    } catch (cause) { setMoreError(cause.message); }
+    } catch (cause) { setMoreError(cause || new Error('')); }
     finally { loadMoreLock.current = false; setLoadingMore(false); }
   }
 
@@ -261,16 +297,10 @@ export function SavingsDashboardPage() {
     actionLock.current = true;
     setBusyId(circleId);
     try {
-      const input = { address: walletAddress, id: circleId };
-      if (kind === 'contribute') await contributeToSavingsCircle(input);
-      if (kind === 'advance') await advanceSavingsCircleRound(input);
-      if (kind === 'cancel') await cancelSavingsCircle(input);
-      if (kind === 'claim') await claimSavingsCircle(input);
-      if (kind === 'accept_earn') await acceptSavingsCircleEarn(input);
-      if (kind === 'cancel_unstarted') await cancelUnstartedSavingsCircle(input);
-      showToast(kind === 'contribute' ? 'Your contribution was recorded.' : kind === 'claim' ? 'Your claim was sent to your wallet.' : kind === 'cancel' ? 'The circle was cancelled. Members can now claim their own contributions.' : kind === 'accept_earn' ? 'You accepted Writz Earn for this circle.' : kind === 'cancel_unstarted' ? 'The unstarted circle was cancelled.' : 'The next round is open.');
+      await runSavingsAction(kind, { address: walletAddress, id: circleId });
+      showToast(t(ACTION_TOAST_KEYS[kind] || 'toast.advanced'));
       await refresh();
-    } catch (cause) { showToast(cause.message || 'Could not complete this action.', 'error'); throw cause; }
+    } catch (cause) { showToast(tError(cause, 'toast.actionFailed'), 'error'); throw cause; }
     finally { actionLock.current = false; setBusyId(null); }
   }
 
@@ -279,17 +309,19 @@ export function SavingsDashboardPage() {
     return count + (circle.status === 'active' && index >= 0 && (circle.earnEnabled && !circle.earnAccepted[index] || !circle.contributions[index]?.paid) ? 1 : 0);
   }, 0);
 
-  return <div className="content-page"><div className="page-heading"><div><h1>My dashboard</h1><p>Your savings circles and contributions that need your attention.</p></div></div>
-    {!walletAddress ? <div className="page-state"><span className="empty-symbol"><UiIcon as={Wallet} size={34} /></span><h2>Connect your wallet to see your circles.</h2><p>Your public address lets us find the savings circles you belong to.</p><WalletConnectOptions connectWallet={connectWallet} connectCavosWallet={connectCavosWallet} cavosEnabled={cavosEnabled} walletBusy={walletBusy} /></div> : <>
-      <div className="account-summary"><div><span>Your address</span><strong>{walletAddress}</strong></div><div><span>Active savings circles</span><strong>{configured ? circles.filter((circle) => circle.status === 'active').length : '—'}</strong></div><div><span>Pending contributions</span><strong>{configured ? pending : '—'}</strong></div></div>
+  return <div className="content-page"><div className="page-heading"><div><h1>{t('dash.title')}</h1><p>{t('dash.lead')}</p></div></div>
+    {!walletAddress ? <div className="page-state"><span className="empty-symbol"><UiIcon as={Wallet} size={34} /></span><h2>{t('dash.connectTitle')}</h2><p>{t('dash.connectBody')}</p><WalletConnectOptions connectWallet={connectWallet} connectCavosWallet={connectCavosWallet} cavosEnabled={cavosEnabled} walletBusy={walletBusy} /></div> : <>
+      <div className="account-summary"><div><span>{t('dash.address')}</span><strong>{walletAddress}</strong></div><div><span>{t('dash.active')}</span><strong>{configured ? circles.filter((circle) => circle.status === 'active').length : '—'}</strong></div><div><span>{t('dash.pending')}</span><strong>{configured ? pending : '—'}</strong></div></div>
       {!configured && <SetupNote />}
-      {configured && <><SavingsCollection circles={circles} loading={loading} error={error} retry={refresh} walletAddress={walletAddress} walletProvider={walletProvider} busyId={busyId} onAction={act} onConnectBrowser={connectWallet} onConnectCavos={connectCavosWallet} cavosEnabled={cavosEnabled} walletBusy={walletBusy} onTrustlineSetup={({ earnEnabled }) => setupUsdcTrustline({ address: walletAddress, earnEnabled })} showToast={showToast} />{nextStartId !== null && !loading && !error && <div className="circle-pagination">{moreError && <p role="alert">{moreError}</p>}<button className="button-secondary" type="button" disabled={loadingMore} onClick={loadMore}>{loadingMore ? 'Loading…' : moreError ? 'Try again' : 'Load more circles'}</button></div>}</>}
+      {configured && <><SavingsCollection circles={circles} loading={loading} error={error} retry={refresh} walletAddress={walletAddress} walletProvider={walletProvider} busyId={busyId} onAction={act} onConnectBrowser={connectWallet} onConnectCavos={connectCavosWallet} cavosEnabled={cavosEnabled} walletBusy={walletBusy} onTrustlineSetup={({ earnEnabled }) => setupUsdcTrustline({ address: walletAddress, earnEnabled })} showToast={showToast} />{nextStartId !== null && !loading && !error && <div className="circle-pagination">{moreError && <p role="alert">{tError(moreError)}</p>}<button className="button-secondary" type="button" disabled={loadingMore} onClick={loadMore}>{loadingMore ? t('common.loading') : moreError ? t('common.retry') : t('dash.loadMore')}</button></div>}</>}
     </>}
   </div>;
 }
 
 export function CreateSavingsCirclePage() {
   const { walletAddress, walletProvider, connectWallet, connectCavosWallet, cavosEnabled, walletBusy, showToast } = useCuotia();
+  const { t, tError } = useI18n();
+  const { money } = useFormatters();
   const [form, setForm] = useState({ name: '', amount: '', frequency: 'weekly', rounds: '4', ownerName: '', others: [{ name: '', address: '' }], earnEnabled: false });
   const [busy, setBusy] = useState(false);
   const submitLock = useRef(false);
@@ -303,55 +335,56 @@ export function CreateSavingsCirclePage() {
     try {
       const { StrKey } = await import('@stellar/stellar-sdk');
       const others = form.others.map(({ name, address }) => ({ name: name.trim(), address: address.trim() }));
-      if (!StrKey.isValidEd25519PublicKey(walletAddress)) throw new Error('The connected wallet is not a valid Stellar address.');
+      if (!StrKey.isValidEd25519PublicKey(walletAddress)) throw new Error(t('create.invalidWallet'));
       const invalidAddress = others.find((member) => !StrKey.isValidEd25519PublicKey(member.address));
-      if (invalidAddress) throw new Error(`${invalidAddress.name || 'A participant'} does not have a valid Stellar address.`);
-      if (others.some((member) => member.address === walletAddress) || new Set(others.map((member) => member.address)).size !== others.length) throw new Error('Each participant must have a unique address; do not add your organizer address again.');
+      if (invalidAddress) throw new Error(invalidAddress.name ? t('create.invalidMember', { name: invalidAddress.name }) : t('create.invalidMemberUnnamed'));
+      if (others.some((member) => member.address === walletAddress) || new Set(others.map((member) => member.address)).size !== others.length) throw new Error(t('create.duplicate'));
       const { id } = await createSavingsCircle({ address: walletAddress, name: form.name.trim(), frequency: form.frequency, amount: form.amount, rounds: form.rounds, members: { ownerName: form.ownerName.trim(), others }, earnEnabled: form.earnEnabled });
       window.location.assign(`/savings/${id}`);
-    } catch (cause) { showToast(cause.message || 'Could not create the savings circle.', 'error'); }
+    } catch (cause) { showToast(tError(cause, 'create.failed'), 'error'); }
     finally { submitLock.current = false; setBusy(false); }
   }
-  if (!configured) return <div className="content-page"><Link className="back-link" href="/savings"><UiIcon as={ArrowLeft} size={16} /> Savings circles</Link><SetupNote /></div>;
-  if (!walletAddress) return <div className="content-page"><section className="page-state"><h1>Connect your wallet to create a circle.</h1><p>Only your public Stellar address is shared; each transaction still needs your wallet signature.</p><WalletConnectOptions connectWallet={connectWallet} connectCavosWallet={connectCavosWallet} cavosEnabled={cavosEnabled} walletBusy={walletBusy} /></section></div>;
+  if (!configured) return <div className="content-page"><Link className="back-link" href="/savings"><UiIcon as={ArrowLeft} size={16} /> {t('nav.savings')}</Link><SetupNote /></div>;
+  if (!walletAddress) return <div className="content-page"><section className="page-state"><h1>{t('create.connectTitle')}</h1><p>{t('create.connectBody')}</p><WalletConnectOptions connectWallet={connectWallet} connectCavosWallet={connectCavosWallet} cavosEnabled={cavosEnabled} walletBusy={walletBusy} /></section></div>;
   const total = Number(form.amount || 0) * Number(form.rounds || 0);
-  return <div className="content-page create-page"><Link className="back-link" href="/savings"><UiIcon as={ArrowLeft} size={16} /> Savings circles</Link><div className="create-layout"><div className="create-intro"><h1>Save together.</h1><p>Choose each person’s contribution, schedule, and number of rounds. No one receives a payout before the whole circle completes.</p><ul><li>After completion, each person claims what they contributed.</li><li>If a round is missed beyond the 3-day grace period, anyone can cancel.</li><li>After cancellation, each person claims only their own recorded contributions.</li></ul></div><section className="create-form-panel"><h2>Circle details</h2><form onSubmit={submit}>
-    <label className="field-label">Circle name<input required minLength="2" maxLength="48" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="e.g. Neighborhood savings" /></label>
-    <div className="form-grid"><label className="field-label">Contribution per person, per round<input required type="number" min="0.0000001" max="1000000" step="0.0000001" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder="25.00" /></label><label className="field-label">Frequency<select value={form.frequency} onChange={(event) => setForm({ ...form, frequency: event.target.value })}><option value="weekly">Weekly</option><option value="biweekly">Every two weeks</option><option value="monthly">Monthly</option></select></label></div>
-    <label className="field-label">Number of rounds<input required type="number" min="1" max="52" step="1" value={form.rounds} onChange={(event) => setForm({ ...form, rounds: event.target.value })} /><span className="form-help">Each person plans to contribute {money(total)} {form.earnEnabled ? 'Blend USDC through Writz Earn' : 'Circle USDC'} in total.</span></label>
-    <div className="member-fields"><div className="member-fields-heading"><span>Your membership</span><span>Organizer · {shortAddress(walletAddress)}</span></div><input required maxLength="40" value={form.ownerName} onChange={(event) => setForm({ ...form, ownerName: event.target.value })} placeholder="Your name or nickname" /></div>
-    <div className="member-fields"><div className="member-fields-heading"><span>Invite members</span><span>{form.others.length + 1} / {MAX_MEMBERS}</span></div><p className="form-help">Enter each person’s public Stellar address.</p>{form.others.map((member, index) => <div className="invite-member" key={index}><span className="member-number">{String(index + 2).padStart(2, '0')}</span><input required maxLength="40" value={member.name} onChange={(event) => updateOther(index, 'name', event.target.value)} placeholder="Name or nickname" /><input required autoCapitalize="characters" spellCheck="false" value={member.address} onChange={(event) => updateOther(index, 'address', event.target.value.trim().toUpperCase())} placeholder="Public G… address" aria-label={`Stellar address for member ${index + 2}`} />{form.others.length > 1 && <button className="remove-member" type="button" onClick={() => setForm({ ...form, others: form.others.filter((_, i) => i !== index) })} aria-label="Remove member"><UiIcon as={X} size={16} /></button>}</div>)}{form.others.length + 1 < MAX_MEMBERS && <button className="add-member" type="button" onClick={() => setForm((current) => ({ ...current, others: [...current.others, { name: '', address: '' }] }))}><UiIcon as={Plus} size={16} /> Add a member</button>}</div>
-    <div className="earn-choice"><label><input type="checkbox" checked={form.earnEnabled} onChange={(event) => setForm({ ...form, earnEnabled: event.target.checked })} /><span><strong>Enable optional Writz Earn</strong><small>Every member must accept before any contribution.</small></span></label>{form.earnEnabled ? <p>Contributions go into Writz’s Testnet Earn vault and each member’s shares are tracked. This circle uses <strong>Blend Testnet USDC</strong>, not Circle USDC — members need Blend USDC (get it at testnet.blend.capital) to contribute. Cuotia can add the required trustline in each member’s wallet. Yield is variable and not guaranteed, and claims can be lower or delayed. Creating the circle does not move funds.</p> : <p>Standard savings: this circle uses <strong>Circle Testnet USDC</strong> (get it at faucet.circle.com). Funds remain in the Cuotia contract and are not deposited into Writz. Signing creation does not transfer contributions.</p>}</div>
+  return <div className="content-page create-page"><Link className="back-link" href="/savings"><UiIcon as={ArrowLeft} size={16} /> {t('nav.savings')}</Link><div className="create-layout"><div className="create-intro"><h1>{t('create.title')}</h1><p>{t('create.lead')}</p><ul><li>{t('create.b1')}</li><li>{t('create.b2')}</li><li>{t('create.b3')}</li></ul></div><section className="create-form-panel"><h2>{t('card.details')}</h2><form onSubmit={submit}>
+    <label className="field-label">{t('create.name')}<input required minLength="2" maxLength="48" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder={t('create.namePlaceholder')} /></label>
+    <div className="form-grid"><label className="field-label">{t('create.amount')}<input required type="number" min="0.0000001" max="1000000" step="0.0000001" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder="25.00" /></label><label className="field-label">{t('create.frequency')}<select value={form.frequency} onChange={(event) => setForm({ ...form, frequency: event.target.value })}>{FREQUENCIES.map((frequency) => <option key={frequency} value={frequency}>{t(`freq.${frequency}`)}</option>)}</select></label></div>
+    <label className="field-label">{t('create.rounds')}<input required type="number" min="1" max="52" step="1" value={form.rounds} onChange={(event) => setForm({ ...form, rounds: event.target.value })} /><span className="form-help">{t('create.totalHelp', { amount: money(total), asset: form.earnEnabled ? t('create.assetEarn') : 'Circle USDC' })}</span></label>
+    <div className="member-fields"><div className="member-fields-heading"><span>{t('create.yourMembership')}</span><span>{t('create.organizer', { address: shortAddress(walletAddress) })}</span></div><input required maxLength="40" value={form.ownerName} onChange={(event) => setForm({ ...form, ownerName: event.target.value })} placeholder={t('create.yourName')} /></div>
+    <div className="member-fields"><div className="member-fields-heading"><span>{t('create.invite')}</span><span>{form.others.length + 1} / {MAX_MEMBERS}</span></div><p className="form-help">{t('create.inviteHelp')}</p>{form.others.map((member, index) => <div className="invite-member" key={index}><span className="member-number">{String(index + 2).padStart(2, '0')}</span><input required maxLength="40" value={member.name} onChange={(event) => updateOther(index, 'name', event.target.value)} placeholder={t('create.memberName')} /><input required autoCapitalize="characters" spellCheck="false" value={member.address} onChange={(event) => updateOther(index, 'address', event.target.value.trim().toUpperCase())} placeholder={t('create.memberAddress')} aria-label={t('create.memberAddressAria', { n: String(index + 2) })} />{form.others.length > 1 && <button className="remove-member" type="button" onClick={() => setForm({ ...form, others: form.others.filter((_, i) => i !== index) })} aria-label={t('create.remove')}><UiIcon as={X} size={16} /></button>}</div>)}{form.others.length + 1 < MAX_MEMBERS && <button className="add-member" type="button" onClick={() => setForm((current) => ({ ...current, others: [...current.others, { name: '', address: '' }] }))}><UiIcon as={Plus} size={16} /> {t('create.add')}</button>}</div>
+    <div className="earn-choice"><label><input type="checkbox" checked={form.earnEnabled} onChange={(event) => setForm({ ...form, earnEnabled: event.target.checked })} /><span><strong>{t('create.earnLabel')}</strong><small>{t('create.earnSmall')}</small></span></label>{form.earnEnabled ? <p>{t('create.earnOnStart')}<strong>{t('create.earnOnStrong')}</strong>{t('create.earnOnEnd')}</p> : <p>{t('create.earnOffStart')}<strong>{t('create.earnOffStrong')}</strong>{t('create.earnOffEnd')}</p>}</div>
     <WalletActivationNote walletAddress={walletAddress} walletProvider={walletProvider} creating />
-    <button className="button-primary submit-button" disabled={busy} type="submit">{busy ? 'Waiting for signature…' : 'Create savings circle'} <UiIcon as={ArrowUpRight} size={16} /></button>
+    <button className="button-primary submit-button" disabled={busy} type="submit">{busy ? t('common.waitingSignature') : t('create.submit')} <UiIcon as={ArrowUpRight} size={16} /></button>
   </form></section></div></div>;
 }
 
 export function SavingsCircleDetailPage({ circleId }) {
   const { walletAddress, walletProvider, connectWallet, connectCavosWallet, cavosEnabled, walletBusy, showToast } = useCuotia();
+  const { t, tError } = useI18n();
   const [circle, setCircle] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const actionLock = useRef(false);
   const [activity, setActivity] = useState([]);
   const [activityLoading, setActivityLoading] = useState(false);
-  const [activityError, setActivityError] = useState('');
+  const [activityError, setActivityError] = useState(null);
   const configured = isChainConfigured();
   const refresh = useCallback(async () => {
     if (!configured) { setLoading(false); return; }
-    setLoading(true); setError('');
+    setLoading(true); setError(null);
     try { setCircle(await getSavingsCircle(circleId)); }
-    catch (cause) { setError(cause.message); }
+    catch (cause) { setError(cause || new Error('')); }
     finally { setLoading(false); }
   }, [circleId, configured]);
   useEffect(() => { refresh(); }, [refresh]);
   useEffect(() => {
     if (!configured) return undefined;
     let active = true;
-    setActivityLoading(true); setActivityError('');
+    setActivityLoading(true); setActivityError(null);
     getSavingsCircleActivity(circleId).then((items) => { if (active) setActivity(items); })
-      .catch((cause) => { if (active) setActivityError(cause.message || 'RPC error.'); })
+      .catch((cause) => { if (active) setActivityError(cause || new Error('')); })
       .finally(() => { if (active) setActivityLoading(false); });
     return () => { active = false; };
   }, [circleId, configured]);
@@ -361,19 +394,13 @@ export function SavingsCircleDetailPage({ circleId }) {
     actionLock.current = true;
     setBusy(true);
     try {
-      const input = { address: walletAddress, id: Number(circleId) };
-      if (kind === 'contribute') await contributeToSavingsCircle(input);
-      if (kind === 'advance') await advanceSavingsCircleRound(input);
-      if (kind === 'cancel') await cancelSavingsCircle(input);
-      if (kind === 'claim') await claimSavingsCircle(input);
-      if (kind === 'accept_earn') await acceptSavingsCircleEarn(input);
-      if (kind === 'cancel_unstarted') await cancelUnstartedSavingsCircle(input);
-      showToast(kind === 'contribute' ? 'Your contribution was recorded.' : kind === 'claim' ? 'Your claim was sent to your wallet.' : kind === 'cancel' ? 'The circle was cancelled. Members can claim their contributions.' : kind === 'accept_earn' ? 'You accepted Writz Earn for this circle.' : kind === 'cancel_unstarted' ? 'The unstarted circle was cancelled.' : 'The next round is open.');
+      await runSavingsAction(kind, { address: walletAddress, id: Number(circleId) });
+      showToast(t(ACTION_TOAST_KEYS[kind] || 'toast.advanced'));
       await refresh();
-    } catch (cause) { showToast(cause.message || 'Could not complete this action.', 'error'); throw cause; }
+    } catch (cause) { showToast(tError(cause, 'toast.actionFailed'), 'error'); throw cause; }
     finally { actionLock.current = false; setBusy(false); }
   }
-  return <div className="content-page detail-page"><Link className="back-link" href="/savings"><UiIcon as={ArrowLeft} size={16} /> All savings circles</Link><div className="page-heading"><div><h1>Circle details</h1><p>Every member contributes through all rounds. Funds are claimed individually at the end.</p></div></div>
-    {!configured ? <SetupNote /> : loading ? <CircleDetailSkeleton /> : error ? <div className="page-state page-error" role="alert"><strong>Could not open this savings circle.</strong><p>{error}</p><button className="button-secondary" onClick={refresh}>Try again</button></div> : circle && <><SavingsCircleCard circle={circle} walletAddress={walletAddress} walletProvider={walletProvider} busy={busy} actionPending={busy} onAction={(_id, kind) => act(kind)} onConnectBrowser={connectWallet} onConnectCavos={connectCavosWallet} cavosEnabled={cavosEnabled} walletBusy={walletBusy} onTrustlineSetup={({ earnEnabled }) => setupUsdcTrustline({ address: walletAddress, earnEnabled })} showToast={showToast} /><SavingsActivity activity={activity} loading={activityLoading} error={activityError} /><p className="detail-footnote">Testnet RPC event history is limited; older events can disappear from this list.</p></>}
+  return <div className="content-page detail-page"><Link className="back-link" href="/savings"><UiIcon as={ArrowLeft} size={16} /> {t('detail.back')}</Link><div className="page-heading"><div><h1>{t('card.details')}</h1><p>{t('detail.lead')}</p></div></div>
+    {!configured ? <SetupNote /> : loading ? <CircleDetailSkeleton /> : error ? <div className="page-state page-error" role="alert"><strong>{t('detail.error')}</strong><p>{tError(error)}</p><button className="button-secondary" onClick={refresh}>{t('common.retry')}</button></div> : circle && <><SavingsCircleCard circle={circle} walletAddress={walletAddress} walletProvider={walletProvider} busy={busy} actionPending={busy} onAction={(_id, kind) => act(kind)} onConnectBrowser={connectWallet} onConnectCavos={connectCavosWallet} cavosEnabled={cavosEnabled} walletBusy={walletBusy} onTrustlineSetup={({ earnEnabled }) => setupUsdcTrustline({ address: walletAddress, earnEnabled })} showToast={showToast} /><SavingsActivity activity={activity} loading={activityLoading} error={activityError} /><p className="detail-footnote">{t('detail.footnote')}</p></>}
   </div>;
 }

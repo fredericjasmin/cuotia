@@ -5,10 +5,16 @@ import { usePathname, useRouter } from 'next/navigation';
 import { isChainConfigured } from '../lib/chain-config.mjs';
 import { connectStellarWallet, disconnectStellarWallet, restoreStellarWallet, setCavosWallet } from '../lib/wallet-client.mjs';
 import { useCavosWallet } from './cavos-wallet-provider.jsx';
+import { useI18n } from './i18n-provider.jsx';
 
 const AppContext = createContext(null);
 
 export function AppProvider({ children }) {
+  const { t } = useI18n();
+  // Read the latest translator from a ref so changing the language does not
+  // re-run effects that show toasts.
+  const tRef = useRef(t);
+  tRef.current = t;
   const pathname = usePathname();
   const router = useRouter();
   const [walletAddress, setWalletAddress] = useState('');
@@ -91,7 +97,7 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (!cavos?.authError) return;
     const expiredLogin = /registry (?:lookup|register) failed:\s*401\b/i.test(cavos.authError);
-    showToast(expiredLogin ? 'Your sign-in expired. Connect again to continue.' : cavos.authError, 'error');
+    showToast(expiredLogin ? tRef.current('wallet.sessionExpired') : cavos.authError, 'error');
 
     // Social-recovery credentials are single-use. If an attestation or recovery
     // request fails, clear Cavos' in-memory credential so another attempt cannot
@@ -120,7 +126,7 @@ export function AppProvider({ children }) {
     } catch (cause) {
       const message = cause?.message || '';
       const wasDismissed = /user closed the modal|closed the modal|modal.*closed|user cancelled|user canceled|request rejected/i.test(message);
-      if (!wasDismissed) showToast('Could not connect your wallet. Check that it is on Stellar Testnet and try again.', 'error');
+      if (!wasDismissed) showToast(tRef.current('wallet.connectFailed'), 'error');
       throw cause;
     } finally {
       browserConnectLock.current = false;
@@ -129,7 +135,7 @@ export function AppProvider({ children }) {
   }, [showToast]);
 
   const connectCavosWallet = useCallback(async () => {
-    if (!cavos?.enabled) throw new Error('Cavos is not configured for this app yet.');
+    if (!cavos?.enabled) throw new Error(tRef.current('wallet.cavosNotConfigured'));
     setWalletBusy(true);
     try {
       if (cavos.address) {
