@@ -4,24 +4,30 @@ Cada miembro de un círculo puede activar, si quiere, que su aporte se cobre sol
 
 ## Cómo funciona
 
-1. **El miembro lo activa** con `set_auto_pay(id, member, true)`. Firma una sola vez. Dentro de esa misma llamada, el contrato pide al token USDC (SEP-41) un `approve` a favor de Cuotia por exactamente lo que ese miembro todavía debe en ese círculo: el aporte multiplicado por las rondas que faltan. Esa autorización se suma a la que ya haya dado en otros círculos.
+1. **El miembro lo activa** con `set_auto_pay(id, member, true)` y firma una sola vez. El contrato lleva, por miembro y por token, un `AutoPayGrant`:
+   - `committed`: lo que todavía falta aportar en todos los círculos donde ese miembro tiene el aporte automático activado;
+   - `expires_ledger`: el ledger en que vence la autorización.
+
+   Dentro de la misma llamada, el contrato deja el `approve` del token (SEP-41) a favor de Cuotia **exactamente** en `committed`, con el vencimiento más largo que permite la red.
 2. **El cobro** lo hace `collect(id, member)`. Puede llamarlo cualquiera; en la práctica lo llama el job programado. El contrato usa `transfer_from` para tomar **un solo aporte de la ronda actual**, con las mismas reglas que un aporte manual:
    - la ronda tiene que estar abierta y dentro del período de gracia;
    - el miembro no tiene que haber pagado esa ronda;
    - en círculos con Writz Earn, todo el grupo tiene que haber aceptado.
 
-   El miembro no firma el cobro.
-3. **Desactivarlo** es `set_auto_pay(id, member, false)`: le resta a la autorización lo que faltaba de ese círculo. Si no queda nada, la deja en 0.
-4. Quien no lo activa sigue pagando a mano con `contribute`. Quien lo activó también puede pagar a mano antes del cobro.
+   El miembro no firma el cobro, y `committed` baja en el mismo monto.
+3. **Si el miembro paga a mano** teniendo el automático activado, `committed` y la autorización bajan un aporte. No queda autorización de más.
+4. **Desactivarlo** es `set_auto_pay(id, member, false)`: le resta a `committed` lo que faltaba de ese círculo y vuelve a ajustar la autorización (si llega a 0, la revoca). También se puede desactivar con el círculo **terminado o cancelado**, para limpiar lo que quedaba.
+5. **Renovar** es volver a llamar `set_auto_pay(id, member, true)` con el automático ya activado: extiende el vencimiento sin cambiar el monto. La app muestra la fecha aproximada de vencimiento (con `auto_pay_grant(member, token)`) y avisa 30 días antes o cuando ya venció.
 
 Eventos en la red:
-- `auto_pay` (`id`, `member`, `enabled`): se activó o desactivó.
+- `auto_pay` (`id`, `member`, `enabled`): se activó, desactivó o renovó.
 - `auto_paid` (`id`, `member`, `round`): se cobró un aporte automático. Reemplaza a `contrib` en ese caso.
 
 Garantías:
-- El contrato nunca cobra más de un aporte por ronda y por círculo.
+- El contrato no tiene función de upgrade, así que nadie puede cambiar estas reglas.
+- Nunca cobra más de un aporte por ronda y por círculo.
 - Solo cobra a quien activó el aporte automático, y únicamente mientras el círculo está activo.
-- Si un miembro pagó a mano estando activado, le queda un aporte de autorización sin usar. El contrato no puede usarlo fuera de esas reglas, y se descuenta al desactivar.
+- La autorización total nunca supera lo que el miembro todavía debe en sus círculos con aporte automático.
 
 ## Job programado (`/api/auto-pay`)
 
@@ -29,7 +35,14 @@ Garantías:
 - abre la siguiente ronda (`advance_round`) si todos pagaron y ya pasó la fecha;
 - después llama `collect` para cada miembro con aporte automático que todavía no pagó.
 
-La cuenta del job (`CUOTIA_KEEPER_SECRET`) **solo paga comisiones** y no guarda fondos de nadie. Si un cobro falla (sin saldo o sin trustline), se reintenta en la próxima ejecución.
+La cuenta del job (`CUOTIA_KEEPER_SECRET`) **solo paga comisiones** y no guarda fondos de nadie. Antes de enviar cada transacción la simula, que es gratis. Solo envía y cuenta en el tope lo que va a salir bien: un cobro que fallaría (sin saldo, sin trustline o con la autorización vencida) no gasta comisión y se reintenta en la próxima ejecución.
+
+Límites por ejecución:
+- 25 transacciones enviadas;
+- 300 simulaciones;
+- 45 segundos, por debajo del límite de 60 s de Vercel.
+
+Además, cada ejecución arranca desde un círculo al azar y solo toca círculos con los USDC de la app donde alguien activó el aporte automático.
 
 Variables de entorno, solo de servidor:
 

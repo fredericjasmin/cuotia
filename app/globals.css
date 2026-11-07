@@ -539,3 +539,6 @@ a { color: inherit; }
 .auto-pay-copy p { margin: 6px 0 0; }
 .auto-pay-state { padding: 3px 9px; border: 1px solid var(--line-strong); border-radius: 20px; background: var(--canvas); color: var(--muted); font-size: 12px; font-weight: 700; }
 .auto-pay-panel.is-on .auto-pay-state { border-color: var(--yellow); color: var(--yellow); }
+.auto-pay-panel.is-warning { border-color: var(--yellow); }
+.auto-pay-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.auto-pay-alert { color: var(--yellow); font-weight: 600; }

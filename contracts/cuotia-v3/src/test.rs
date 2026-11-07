@@ -203,3 +203,64 @@ fn only_members_can_enable_auto_pay() {
     let stranger = Address::generate(&s.env);
     assert_eq!(s.cuotia.try_set_auto_pay(&id, &stranger, &true), Err(Ok(CircleError::NotAMember)));
 }
+
+#[test]
+fn paying_manually_while_automatic_leaves_no_extra_allowance() {
+    let s = setup();
+    let id = create(&s);
+    s.cuotia.set_auto_pay(&id, &s.ana, &true);
+    s.cuotia.contribute(&id, &s.ana); // pays round 1 by hand before the collection
+    assert_eq!(s.token.allowance(&s.ana, &s.contract), CONTRIBUTION * (ROUNDS as i128 - 1));
+    assert_eq!(s.cuotia.auto_pay_grant(&s.ana, &s.token.address).committed, CONTRIBUTION * (ROUNDS as i128 - 1));
+    s.cuotia.contribute(&id, &s.luis);
+    for _ in 1..ROUNDS {
+        next_round(&s, id);
+        s.cuotia.collect(&id, &s.ana);
+        s.cuotia.contribute(&id, &s.luis);
+    }
+    assert_eq!(s.cuotia.get_circle(&id).status, CircleStatus::Complete);
+    assert_eq!(s.token.allowance(&s.ana, &s.contract), 0);
+    assert_eq!(s.cuotia.auto_pay_grant(&s.ana, &s.token.address).committed, 0);
+}
+
+#[test]
+fn disabling_after_cancellation_cleans_the_allowance() {
+    let s = setup();
+    let id = create(&s);
+    s.cuotia.set_auto_pay(&id, &s.ana, &true);
+    s.cuotia.collect(&id, &s.ana);
+    let due = s.cuotia.get_circle(&id).round_due_at;
+    s.env.ledger().with_mut(|ledger| ledger.timestamp = due + GRACE_PERIOD_SECONDS + 1);
+    s.cuotia.cancel_circle(&id);
+    assert_eq!(s.token.allowance(&s.ana, &s.contract), CONTRIBUTION * 2);
+    s.cuotia.set_auto_pay(&id, &s.ana, &false);
+    assert_eq!(s.token.allowance(&s.ana, &s.contract), 0);
+    // Enabling is still blocked on a circle that is no longer active.
+    assert_eq!(s.cuotia.try_set_auto_pay(&id, &s.ana, &true), Err(Ok(CircleError::CircleNotActive)));
+}
+
+#[test]
+fn enabling_again_renews_the_expiration() {
+    let s = setup();
+    let id = create(&s);
+    s.cuotia.set_auto_pay(&id, &s.ana, &true);
+    let first = s.cuotia.auto_pay_grant(&s.ana, &s.token.address);
+    assert!(first.expires_ledger > s.env.ledger().sequence());
+    s.env.ledger().with_mut(|ledger| ledger.sequence_number += 50_000);
+    s.cuotia.set_auto_pay(&id, &s.ana, &true);
+    let renewed = s.cuotia.auto_pay_grant(&s.ana, &s.token.address);
+    assert_eq!(renewed.expires_ledger, first.expires_ledger + 50_000);
+    assert_eq!(renewed.committed, CONTRIBUTION * ROUNDS as i128);
+    assert_eq!(s.token.allowance(&s.ana, &s.contract), CONTRIBUTION * ROUNDS as i128);
+}
+
+#[test]
+fn grant_is_empty_by_default_and_after_disabling() {
+    let s = setup();
+    let id = create(&s);
+    let empty = AutoPayGrant { committed: 0, expires_ledger: 0 };
+    assert_eq!(s.cuotia.auto_pay_grant(&s.ana, &s.token.address), empty);
+    s.cuotia.set_auto_pay(&id, &s.ana, &true);
+    s.cuotia.set_auto_pay(&id, &s.ana, &false);
+    assert_eq!(s.cuotia.auto_pay_grant(&s.ana, &s.token.address), empty);
+}

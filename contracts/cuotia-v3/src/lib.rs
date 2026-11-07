@@ -152,6 +152,18 @@ pub struct AutoContributionCollected {
 enum DataKey {
     NextId,
     Circle(u32),
+    /// (member, token): what Cuotia may still pull from this member across all circles.
+    AutoPay(Address, Address),
+}
+
+/// Allowance that Cuotia keeps in sync with the member's opted-in circles. `committed` is the
+/// sum of the remaining contributions in every circle (same token) where the member enabled
+/// auto-pay; the token allowance always equals it. `expires_ledger` is when it lapses.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutoPayGrant {
+    pub committed: i128,
+    pub expires_ledger: u32,
 }
 
 #[contract]
@@ -279,42 +291,45 @@ impl Cuotia {
         record_contribution(&env, id, &mut circle, index, &member, false)
     }
 
-    /// A member opts in or out of automatic contributions for this circle. Enabling grants the
-    /// contract a token allowance for exactly this member's remaining contributions in this
-    /// circle (added to any allowance already granted to Cuotia by other circles); disabling
-    /// removes that amount again. The member can change this at any time.
+    /// A member opts in or out of automatic contributions for this circle (off by default).
+    /// Enabling commits this member's remaining contributions in the circle to Cuotia's token
+    /// allowance; disabling removes them. Calling it with `true` while already enabled renews
+    /// the allowance's expiration. Disabling also works after the circle ended or was cancelled,
+    /// so no allowance is left behind.
     pub fn set_auto_pay(env: Env, id: u32, member: Address, enabled: bool) -> Result<(), CircleError> {
         member.require_auth();
         let mut circle = load(&env, id)?;
-        require_active(&circle)?;
         let index = member_index(&circle.members, &member).ok_or(CircleError::NotAMember)?;
-        if circle.auto_pay.get(index).unwrap_or(false) == enabled {
-            return Ok(());
-        }
-        let remaining = remaining_contributions(&circle, index)?;
-        if enabled && remaining == 0 {
-            return Err(CircleError::NothingToCollect);
-        }
-        let token = token::Client::new(&env, &circle.token);
-        let spender = env.current_contract_address();
-        let current = token.allowance(&member, &spender);
-        let allowance = if enabled {
-            current.checked_add(remaining).ok_or(CircleError::AmountOverflow)?
-        } else if current > remaining {
-            current - remaining
+        let currently = circle.auto_pay.get(index).unwrap_or(false);
+        let mut grant = load_grant(&env, &member, &circle.token);
+        if enabled {
+            require_active(&circle)?;
+            if !currently {
+                let remaining = remaining_contributions(&circle, index)?;
+                if remaining == 0 {
+                    return Err(CircleError::NothingToCollect);
+                }
+                grant.committed = grant.committed.checked_add(remaining).ok_or(CircleError::AmountOverflow)?;
+            }
         } else {
-            0
-        };
-        let expiration = if allowance > 0 {
-            env.ledger().max_live_until_ledger()
-        } else {
-            env.ledger().sequence()
-        };
-        token.approve(&member, &spender, &allowance, &expiration);
-        circle.auto_pay.set(index, enabled);
-        save(&env, id, &circle);
+            if !currently {
+                return Ok(());
+            }
+            let remaining = remaining_contributions(&circle, index)?;
+            grant.committed = if grant.committed > remaining { grant.committed - remaining } else { 0 };
+        }
+        sync_allowance(&env, &member, &circle.token, &mut grant);
+        if currently != enabled {
+            circle.auto_pay.set(index, enabled);
+            save(&env, id, &circle);
+        }
         AutoPayChanged { id, member, enabled }.publish(&env);
         Ok(())
+    }
+
+    /// Current automatic-payment allowance of a member for a token (zero when none).
+    pub fn auto_pay_grant(env: Env, member: Address, token_address: Address) -> AutoPayGrant {
+        load_grant(&env, &member, &token_address)
     }
 
     /// Anyone (for example a scheduled job) may collect the current round's contribution from a
@@ -529,6 +544,17 @@ fn record_contribution(
     } else {
         token.transfer(member, &contract, &circle.contribution);
     }
+    if circle.auto_pay.get(index).unwrap_or(false) {
+        // This round no longer needs to be collected: release it from the committed amount.
+        let mut grant = load_grant(env, member, &circle.token);
+        grant.committed = if grant.committed > circle.contribution { grant.committed - circle.contribution } else { 0 };
+        if automatic {
+            // transfer_from already reduced the token allowance by the same amount.
+            store_grant(env, member, &circle.token, &grant);
+        } else {
+            sync_allowance(env, member, &circle.token, &mut grant);
+        }
+    }
     if circle.earn_enabled {
         let minted_shares = deposit_into_writz(env, circle.contribution)?;
         let current_shares = circle.earn_shares.get(index).unwrap_or(0)
@@ -547,6 +573,31 @@ fn record_contribution(
         ContributionRecorded { id, member: member.clone(), round: circle.round }.publish(env);
     }
     Ok(())
+}
+
+fn load_grant(env: &Env, member: &Address, token_address: &Address) -> AutoPayGrant {
+    env.storage().persistent()
+        .get(&DataKey::AutoPay(member.clone(), token_address.clone()))
+        .unwrap_or(AutoPayGrant { committed: 0, expires_ledger: 0 })
+}
+
+fn store_grant(env: &Env, member: &Address, token_address: &Address, grant: &AutoPayGrant) {
+    let key = DataKey::AutoPay(member.clone(), token_address.clone());
+    env.storage().persistent().set(&key, grant);
+    env.storage().persistent().extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+}
+
+/// Sets the token allowance to exactly the committed amount, with the longest expiration the
+/// network allows (or revokes it when nothing is committed). Requires the member's auth.
+fn sync_allowance(env: &Env, member: &Address, token_address: &Address, grant: &mut AutoPayGrant) {
+    let expiration = if grant.committed > 0 {
+        env.ledger().max_live_until_ledger()
+    } else {
+        env.ledger().sequence()
+    };
+    token::Client::new(env, token_address).approve(member, &env.current_contract_address(), &grant.committed, &expiration);
+    grant.expires_ledger = if grant.committed > 0 { expiration } else { 0 };
+    store_grant(env, member, token_address, grant);
 }
 
 /// Amount this member still owes in the circle: remaining rounds, minus the current one if paid.
