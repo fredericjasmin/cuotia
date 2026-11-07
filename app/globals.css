@@ -542,3 +542,13 @@ a { color: inherit; }
 .auto-pay-panel.is-warning { border-color: var(--yellow); }
 .auto-pay-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .auto-pay-alert { color: var(--yellow); font-weight: 600; }
+.receipt-card { display: grid; gap: 14px; max-width: 640px; }
+.receipt-card h1 { margin: 0; font: 800 var(--text-title)/1.25 'Poppins', sans-serif; }
+.receipt-lead { margin: 0; color: var(--muted); font-size: var(--text-body); }
+.receipt-details { display: grid; gap: 0; margin: 0; border-top: 1px solid var(--line); }
+.receipt-details > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.receipt-details dt { color: var(--muted); font-size: var(--text-label); }
+.receipt-details dd { margin: 0; color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
+.receipt-details a { color: var(--ink); }
+.receipt-details a:hover { text-decoration-color: var(--yellow); }
+.receipt-card .button-primary { justify-self: start; }

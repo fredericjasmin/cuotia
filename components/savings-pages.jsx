@@ -75,10 +75,10 @@ function WalletActivationNote({ walletAddress, walletProvider, earnApproval = fa
   </div>;
 }
 
-function SavingsActivity({ activity, loading, error }) {
+function SavingsActivity({ circleId, activity, loading, error }) {
   const { t, tError, formatDate } = useI18n();
   return <section className="circle-activity" aria-labelledby="savings-activity-title"><h2 id="savings-activity-title">{t('activity.title')}</h2>
-    {loading ? <ActivitySkeleton /> : error ? <p role="status">{t('activity.error', { error: tError(error, 'activity.rpcError') })}</p> : activity.length ? <ol>{activity.map((item) => <li key={`${item.hash}-${item.ledger}`}><span>{item.labelKey ? t(item.labelKey) : item.label}</span><a href={`https://stellar.expert/explorer/testnet/tx/${item.hash}`} target="_blank" rel="noreferrer">{t('activity.viewTx')} <UiIcon as={ExternalLink} size={14} /></a><time dateTime={item.timestamp}>{formatDate(new Date(item.timestamp), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC</time></li>)}</ol> : <p>{t('activity.empty')}</p>}
+    {loading ? <ActivitySkeleton /> : error ? <p role="status">{t('activity.error', { error: tError(error, 'activity.rpcError') })}</p> : activity.length ? <ol>{activity.map((item) => <li key={`${item.hash}-${item.ledger}`}><span>{item.labelKey ? t(item.labelKey) : item.label}</span>{(item.event === 'contrib' || item.event === 'auto_paid') && circleId && <Link href={`/savings/${circleId}/receipt/${item.hash}`}>{t('activity.receipt')}</Link>}<a href={`https://stellar.expert/explorer/testnet/tx/${item.hash}`} target="_blank" rel="noreferrer">{t('activity.viewTx')} <UiIcon as={ExternalLink} size={14} /></a><time dateTime={item.timestamp}>{formatDate(new Date(item.timestamp), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC</time></li>)}</ol> : <p>{t('activity.empty')}</p>}
   </section>;
 }
 
@@ -149,13 +149,20 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
   const canCancelUnstarted = circle.status === 'active' && circle.earnEnabled && isMember && circle.pot === 0;
   const assetLabel = circle.earnEnabled ? 'Blend USDC' : 'Circle USDC';
   const [shareUrl, setShareUrl] = useState('');
+  const [remindUrl, setRemindUrl] = useState('');
   useEffect(() => {
     // Built after mount: the link uses the current site address (localhost, preview or production).
-    if (compact || circle.status !== 'active') { setShareUrl(''); return; }
+    if (compact || circle.status !== 'active') { setShareUrl(''); setRemindUrl(''); return; }
     const circleUrl = `${window.location.origin}/savings/${circle.id}`;
     const message = t('share.message', { name: circle.name, amount: money(circle.contribution), asset: assetLabel, frequency: frequencyLabel(circle.frequency).toLowerCase(), rounds: circle.roundsTotal, url: circleUrl });
     setShareUrl(`https://wa.me/?text=${encodeURIComponent(message)}`);
-  }, [compact, circle.status, circle.id, circle.name, circle.contribution, circle.frequency, circle.roundsTotal, assetLabel, t]);
+    // Reminder: lists who has not contributed this round. The person sends it to the group.
+    const pending = circle.members.filter((_, index) => !circle.contributions[index]?.paid).map((member) => member.name);
+    const windowOpen = Date.now() <= (circle.roundDueAt + circle.gracePeriodSeconds) * 1000;
+    if (!isMember || !pending.length || !windowOpen) { setRemindUrl(''); return; }
+    const reminder = t('remind.message', { name: circle.name, count: pending.length, amount: money(circle.contribution), asset: assetLabel, round: circle.round + 1, members: pending.join(', '), date: dateLabel(circle.roundDueAt), url: circleUrl });
+    setRemindUrl(`https://wa.me/?text=${encodeURIComponent(reminder)}`);
+  }, [compact, circle.status, circle.id, circle.name, circle.contribution, circle.frequency, circle.roundsTotal, circle.round, circle.roundDueAt, paidCount, isMember, assetLabel, t]);
   const contributionPercent = Math.round((paidCount / circle.members.length) * 100);
   const waiting = t('common.waitingSignature');
   const roundChip = circle.status === 'active'
@@ -225,6 +232,7 @@ function SavingsCircleCard({ circle, walletAddress, walletProvider, onAction, on
       {canClaim && <button className="button-primary" disabled={actionPending} onClick={() => runAction('claim')}>{busy ? waiting : circle.earnEnabled ? t('card.claimWritz') : t('card.claim', { amount: money(myContribution.total) })} <UiIcon as={ArrowUpRight} size={16} /></button>}
       {trustlineSetupRequired && <div className="inline-note trustline-setup-note" role="status"><p>{t('card.trustlineNote', { asset: assetLabel })}</p>{walletProvider !== 'cavos' && walletAddress && <a href={`https://friendbot.stellar.org/?addr=${encodeURIComponent(walletAddress)}`} target="_blank" rel="noreferrer">{t('activation.friendbot')} <UiIcon as={ExternalLink} size={14} /></a>}<button className="button-secondary" type="button" disabled={actionPending || trustlineBusy} onClick={setupTrustline}>{trustlineBusy ? waiting : t('card.authorize', { asset: assetLabel })}</button><a href={circle.earnEnabled ? 'https://testnet.blend.capital' : 'https://faucet.circle.com/'} target="_blank" rel="noreferrer">{t('card.getAsset', { asset: assetLabel })} <UiIcon as={ExternalLink} size={14} /></a></div>}
       {isMember && myContribution?.claimed && <span className="complete-label"><UiIcon as={Check} size={15} /> {t('card.claimedDone')}</span>}
+      {remindUrl && <a className="button-quiet share-whatsapp" href={remindUrl} target="_blank" rel="noreferrer"><UiIcon as={MessageCircle} size={16} /> {t('remind.whatsapp')}</a>}
       {shareUrl && <a className="button-quiet share-whatsapp" href={shareUrl} target="_blank" rel="noreferrer" title={t('share.note')}><UiIcon as={MessageCircle} size={16} /> {t('share.whatsapp')}</a>}
       {compact && <Link className="button-quiet" href={`/savings/${circle.id}`}>{t('card.details')} <UiIcon as={ArrowRight} size={15} /></Link>}
     </div>
@@ -465,6 +473,6 @@ export function SavingsCircleDetailPage({ circleId }) {
     finally { actionLock.current = false; setBusy(false); }
   }
   return <div className="content-page detail-page"><Link className="back-link" href="/savings"><UiIcon as={ArrowLeft} size={16} /> {t('detail.back')}</Link><div className="page-heading"><div><h1>{t('card.details')}</h1><p>{t('detail.lead')}</p></div></div>
-    {!configured ? <SetupNote /> : loading ? <CircleDetailSkeleton /> : error ? <div className="page-state page-error" role="alert"><strong>{t('detail.error')}</strong><p>{tError(error)}</p><button className="button-secondary" onClick={refresh}>{t('common.retry')}</button></div> : circle && <><SavingsCircleCard circle={circle} walletAddress={walletAddress} walletProvider={walletProvider} busy={busy} actionPending={busy} onAction={(_id, kind) => act(kind)} onConnectBrowser={connectWallet} onConnectCavos={connectCavosWallet} cavosEnabled={cavosEnabled} walletBusy={walletBusy} onTrustlineSetup={({ earnEnabled }) => setupUsdcTrustline({ address: walletAddress, earnEnabled })} showToast={showToast} /><SavingsActivity activity={activity} loading={activityLoading} error={activityError} /><p className="detail-footnote">{t('detail.footnote')}</p></>}
+    {!configured ? <SetupNote /> : loading ? <CircleDetailSkeleton /> : error ? <div className="page-state page-error" role="alert"><strong>{t('detail.error')}</strong><p>{tError(error)}</p><button className="button-secondary" onClick={refresh}>{t('common.retry')}</button></div> : circle && <><SavingsCircleCard circle={circle} walletAddress={walletAddress} walletProvider={walletProvider} busy={busy} actionPending={busy} onAction={(_id, kind) => act(kind)} onConnectBrowser={connectWallet} onConnectCavos={connectCavosWallet} cavosEnabled={cavosEnabled} walletBusy={walletBusy} onTrustlineSetup={({ earnEnabled }) => setupUsdcTrustline({ address: walletAddress, earnEnabled })} showToast={showToast} /><SavingsActivity circleId={circleId} activity={activity} loading={activityLoading} error={activityError} /><p className="detail-footnote">{t('detail.footnote')}</p></>}
   </div>;
 }
