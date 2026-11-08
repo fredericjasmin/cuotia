@@ -129,6 +129,7 @@ a { color: inherit; }
 .circle-activity li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .25rem 1rem; align-items: center; padding-top: .7rem; border-top: 1px solid var(--line); }
 .circle-activity li span { font-weight: 600; }
 .circle-activity li a { color: var(--lavender); font-size: .9rem; }
+.activity-links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .35rem 1.1rem; }
 .circle-activity li time { grid-column: 1 / -1; color: var(--muted); font-size: .82rem; }
 .transaction-link { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem 1rem; padding: .8rem 1rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 .transaction-link a { color: var(--accent); font-weight: 650; }
@@ -549,6 +550,7 @@ a { color: inherit; }
   .circle-activity { padding: 16px; }
   .circle-activity li { grid-template-columns: minmax(0, 1fr); gap: 5px; }
   .circle-activity li time { grid-column: auto; }
+  .activity-links { justify-content: flex-start; }
 }
 @media (max-width: 360px) {
   .topbar { column-gap: 6px; }

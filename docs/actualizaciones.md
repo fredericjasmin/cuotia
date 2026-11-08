@@ -37,7 +37,8 @@ Las comisiones (`claim_fee_bps`, `yield_fee_bps`) quedan guardadas en cada círc
 
    `migrate` falla con el error 29 (`VersionNotNewer`) si ya se corrió o si `CONTRACT_VERSION` no se subió. Así no puede correr dos veces.
 
-7. Si la app usa funciones nuevas, desplegar la app después de actualizar el contrato.
+7. Regenerar la interfaz que usa la app: `npm run spec` (actualiza `lib/cuotia-spec.mjs` desde el `.wasm` recién compilado) y hacer commit. La app lee el contrato con esa interfaz en vez de descargarlo de la red; si no se regenera, las funciones nuevas no existen para la app.
+8. Si la app usa funciones nuevas, desplegar la app después de actualizar el contrato.
 
 ## Reglas para no romper los datos guardados
 
