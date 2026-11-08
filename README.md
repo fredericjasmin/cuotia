@@ -31,6 +31,18 @@ npm start
 
 `npm run dev` and `npm start` launch the web app and API through Next.js. There is no separate backend server.
 
+### With secrets from Stash
+
+The environment variables and the Stellar CLI keys are backed up in Stash (project `cuotia`: env `local` holds `.env.local`, env `stellar-keys` holds the CLI identities). To run without a local `.env.local`, use the `:stash` variants, which inject the `local` env:
+
+```sh
+npm run dev:stash
+npm run build:stash
+npm run start:stash
+```
+
+To recreate the file instead: `stash pull --project cuotia --env local --file .env.local`. Key recovery: [docs/actualizaciones.md](docs/actualizaciones.md).
+
 ## Deploy the app to Vercel
 
 1. Import the repository into Vercel.

@@ -7,8 +7,11 @@
   },
   "scripts": {
     "dev": "next dev --port 4173",
+    "dev:stash": "stash run --project cuotia --env local -- next dev --port 4173",
     "build": "next build",
+    "build:stash": "stash run --project cuotia --env local -- next build",
     "start": "next start --port 4173",
+    "start:stash": "stash run --project cuotia --env local -- next start --port 4173",
     "test": "node --test lib/cuotia-chain.test.mjs && cargo test --manifest-path contracts/cuotia-v3/Cargo.toml"
   },
   "dependencies": {
