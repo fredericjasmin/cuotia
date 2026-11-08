@@ -6,7 +6,7 @@ Antes de la v6, cada versión era un contrato nuevo y vacío.
 
 ## Quién puede actualizar
 
-Solo la cuenta **admin**, fijada al desplegar (`--admin`). Se consulta con `admin` y se transfiere con `set_admin`, que necesita la firma del admin actual y la del nuevo (así un error de tipeo no deja el contrato sin dueño). En Testnet el admin es la identidad `cuotia-testnet-deploy`.
+Solo la cuenta **admin**, fijada al desplegar (`--admin`). Se consulta con `admin` y se transfiere con `set_admin`, que necesita la firma del admin actual y la del nuevo (así un error de tipeo no deja el contrato sin dueño). En Testnet el admin es la identidad `cuotia-admin` (su clave está respaldada en Stash, proyecto `cuotia`, entorno `stellar-keys`).
 
 Las comisiones (`claim_fee_bps`, `yield_fee_bps`) quedan guardadas en cada círculo al crearlo. Una actualización no las cambia para los círculos existentes, salvo que el código nuevo lo haga a propósito.
 
@@ -30,9 +30,9 @@ Las comisiones (`claim_fee_bps`, `yield_fee_bps`) quedan guardadas en cada círc
 6. Instalarlo y migrar, en este orden, en cada instancia (local y demo):
 
    ```powershell
-   stellar contract invoke --id cuotia-v6-demo --source-account cuotia-testnet-deploy --network testnet -- upgrade --new_wasm_hash <HASH>
-   stellar contract invoke --id cuotia-v6-demo --source-account cuotia-testnet-deploy --network testnet -- migrate
-   stellar contract invoke --id cuotia-v6-demo --source-account cuotia-testnet-deploy --network testnet -- version
+   stellar contract invoke --id cuotia-v6-demo --source-account cuotia-admin --network testnet -- upgrade --new_wasm_hash <HASH>
+   stellar contract invoke --id cuotia-v6-demo --source-account cuotia-admin --network testnet -- migrate
+   stellar contract invoke --id cuotia-v6-demo --source-account cuotia-admin --network testnet -- version
    ```
 
    `migrate` falla con el error 29 (`VersionNotNewer`) si ya se corrió o si `CONTRACT_VERSION` no se subió. Así no puede correr dos veces.
@@ -54,3 +54,12 @@ El mecanismo es el mismo en las dos redes. Diferencias:
 
 - **Testnet se reinicia cada tanto** (lo decide la Stellar Development Foundation) y borra todos los contratos y datos. Ninguna actualización protege de eso.
 - **Antes de Mainnet**, el admin no puede ser una sola clave: pasarlo con `set_admin` a una cuenta multifirma (por ejemplo 2 de 3) y agregar un plazo de espera público antes de instalar cada versión, para que quien no esté de acuerdo pueda retirar su ahorro. Más adelante se puede renunciar al admin y dejar el contrato fijo.
+
+## Respaldo de claves y variables
+
+Todo está en Stash, proyecto `cuotia`:
+
+- Entorno `local`: el `.env.local` completo. Para recrearlo: `stash pull --project <ID> --env local --file .env.local` (ver `stash pull --help`).
+- Entorno `stellar-keys`: la clave secreta y la dirección de cada identidad del Stellar CLI (`STELLAR_<NOMBRE>_SECRET` / `_ADDRESS`): admin, tesorería, keepers y cuentas de prueba.
+
+Para recuperar una identidad en otra PC: `stellar keys add cuotia-admin --secret-key` y pegar el valor de `STELLAR_CUOTIA_ADMIN_SECRET`. No uses `--secure-store` para el admin ni la tesorería: el CLI no deja exportar esas claves, así que después no se podrían respaldar.
