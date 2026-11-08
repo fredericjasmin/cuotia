@@ -214,7 +214,17 @@ export default function SiteShell({ children }) {
       <nav id="main-navigation" ref={mobileNavigationRef} className={mobileMenuOpen ? 'mobile-open' : ''} aria-label={t('shell.mainNav')}>{navigation.map(({ href, label, compact }) => {
         const active = pathname === href || (href !== '/' && pathname.startsWith(`${href}/`));
         return <Link key={href} aria-current={active ? 'page' : undefined} className={active ? 'is-active' : ''} href={href} onClick={() => setMobileMenuOpen(false)}><span className="nav-label-full">{t(label)}</span><span className="nav-label-compact">{t(compact)}</span></Link>;
-      })}<div className="nav-language"><span>{t('lang.label')}</span><LanguageSwitch /></div><div className="nav-language"><span>{t('network.title')}</span><NetworkSwitch /></div></nav>
+      })}<div className="nav-language"><span>{t('lang.label')}</span><LanguageSwitch /></div><div className="nav-language"><span>{t('network.title')}</span><NetworkSwitch /></div>{walletReady && <div className="nav-wallet">
+        {walletAddress ? <>
+          <p className="nav-wallet-address"><span className="wallet-status-dot" aria-hidden="true" />{shortAddress(walletAddress)}</p>
+          <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)}>{t('shell.dashboard')}</Link>
+          <Link href="/savings/create" onClick={() => setMobileMenuOpen(false)}>{t('shell.createCircle')}</Link>
+          <button type="button" className="nav-wallet-disconnect" onClick={() => { setMobileMenuOpen(false); disconnectWallet(); }}>{t('shell.disconnect')}</button>
+        </> : <>
+          <button type="button" className="button-primary" disabled={walletBusy} onClick={() => { setMobileMenuOpen(false); connectWallet().catch(() => {}); }}>{walletBusy ? t('wallet.connecting') : t('wallet.browser')}</button>
+          <button type="button" className="button-secondary" disabled={walletBusy || !cavosEnabled} onClick={() => { setMobileMenuOpen(false); connectCavosWallet().catch(() => {}); }}>{t('wallet.cavos')}</button>
+        </>}
+      </div>}</nav>
       <div className="topbar-actions"><NetworkSwitch /><LanguageSwitch />{!walletReady ? <WalletButtonSkeleton /> : walletAddress ? <details className="wallet-menu" ref={walletMenuRef}>
         <summary className="wallet-button connected"><span className="wallet-status-dot" aria-hidden="true" />{shortAddress(walletAddress)}<UiIcon as={ChevronDown} className="wallet-menu-chevron" size={14} /></summary>
       <div className="wallet-menu-popover"><p className="wallet-menu-network">Stellar Testnet</p><Link href="/dashboard" onClick={closeWalletMenu}>{t('shell.dashboard')}</Link><Link href="/savings/create" onClick={closeWalletMenu}>{t('shell.createCircle')}</Link><button type="button" onClick={disconnectWallet}>{t('shell.disconnect')}</button></div>
