@@ -175,7 +175,7 @@ export default function SiteShell({ children }) {
       mobileMenuButtonRef.current?.focus();
     }
 
-    const desktopViewport = window.matchMedia('(min-width: 621px)');
+    const desktopViewport = window.matchMedia('(min-width: 1101px)');
     const closeOnDesktop = () => {
       if (desktopViewport.matches) setMobileMenuOpen(false);
     };

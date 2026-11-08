@@ -57,10 +57,11 @@ a { color: inherit; }
 .brand-label { color: var(--cream); font-size: 40px; font-weight: 800; letter-spacing: -1.5px; line-height: 1; }
 .brand-dot { color: var(--lavender); }
 .topbar nav { display: flex; gap: 30px; margin: 0 auto; }
-.topbar nav a { color: var(--muted); font-size: var(--text-label); text-decoration: none; transition: color .2s; }
+.topbar nav a { color: var(--muted); font-size: var(--text-label); text-decoration: none; white-space: nowrap; transition: color .2s; }
 .topbar nav a:hover { color: var(--cream); }
 .mobile-menu-toggle { display: none; }
-.topbar-actions { display: flex; align-items: center; gap: 9px; }
+.topbar-actions { display: flex; flex: none; align-items: center; gap: 9px; }
+.topbar-actions summary { white-space: nowrap; }
 .language-menu { position: relative; flex: none; }
 .language-menu summary { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 9px 11px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); color: var(--ink); cursor: pointer; font-size: 12px; font-weight: 700; letter-spacing: .4px; list-style: none; transition: border-color .18s, background-color .18s; }
 .language-menu summary::-webkit-details-marker { display: none; }
@@ -106,6 +107,7 @@ a { color: inherit; }
 .button-primary:not(:disabled):hover { background: #b3a7ef; }
 .button-primary > .ui-icon, .button-secondary > .ui-icon { margin-left: 8px; }
 .page-heading .button-primary > .ui-icon { margin: 0 7px 0 0; }
+.page-heading > .button-primary { flex: none; white-space: nowrap; }
 .button-quiet { padding-left: 0; background: transparent; color: var(--muted); font-size: var(--text-label); }
 .button-quiet:hover { color: var(--ink); }
 .circle-list { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -414,6 +416,23 @@ a { color: inherit; }
 .info-callout h2 { margin: 0 0 7px; font-size: var(--text-title); font-weight: 800; }
 .info-callout p { max-width: 690px; margin: 0; color: var(--muted); font-size: var(--text-small); }
 
+/* Tablet and below: links, network and language move into the menu so nothing wraps. */
+@media (max-width: 1100px) {
+  .topbar { gap: 12px; }
+  .mobile-menu-toggle { display: flex; width: 42px; height: 42px; flex: none; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 0; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); color: var(--cream); cursor: pointer; }
+  .mobile-menu-toggle .ui-icon { transition: transform .2s ease; }
+  .topbar nav { position: absolute; z-index: 21; top: calc(100% - 1px); right: 7.5%; display: none; width: min(270px, calc(100vw - 32px)); flex-direction: column; gap: 4px; margin: 0; padding: 8px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); box-shadow: 0 18px 45px #000a; }
+  .topbar nav.mobile-open { display: grid; }
+  .topbar nav a { display: flex; min-height: 46px; align-items: center; padding: 0 12px; border-radius: 8px; color: var(--muted); font-size: var(--text-label); }
+  .topbar nav a:hover, .topbar nav a.is-active { background: #ffffff0c; color: var(--cream); }
+  .nav-label-full { display: inline; }
+  .nav-label-compact { display: none; }
+  .topbar-actions > .language-menu { display: none; }
+  .topbar nav .nav-language + .nav-language { margin-top: 0; }
+  .topbar nav .nav-language { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; padding: 10px 12px 4px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--text-label); }
+  .topbar-actions { margin-left: auto; }
+  .mobile-menu-toggle { order: 3; }
+}
 @media (max-width: 900px) {
   .page-main { padding-top: 32px; }
   .home-hero { grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -431,6 +450,7 @@ a { color: inherit; }
 }
 @media (max-width: 760px) {
   .app-shell { padding-right: 5%; padding-left: 5%; }
+  .topbar nav { right: 5%; }
   .topbar nav { gap: 14px; }
   .topbar nav a { font-size: var(--text-label); }
   .circle-list { grid-template-columns: 1fr; }
@@ -440,17 +460,6 @@ a { color: inherit; }
 @media (max-width: 620px) {
   .page-main { padding-top: 27px; padding-bottom: 48px; }
   .topbar { height: 68px; min-height: 68px; flex-wrap: nowrap; gap: 10px; padding-top: 8px; padding-bottom: 8px; }
-  .mobile-menu-toggle { display: flex; width: 42px; height: 42px; flex: none; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 0; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); color: var(--cream); cursor: pointer; }
-  .mobile-menu-toggle .ui-icon { transition: transform .2s ease; }
-  .topbar nav { position: absolute; z-index: 21; top: calc(100% - 1px); right: 16px; display: none; width: min(270px, calc(100vw - 32px)); flex-direction: column; gap: 4px; margin: 0; padding: 8px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); box-shadow: 0 18px 45px #000a; }
-  .topbar nav.mobile-open { display: grid; }
-  .topbar nav a { display: flex; min-height: 46px; align-items: center; padding: 0 12px; border-radius: 8px; color: var(--muted); font-size: var(--text-label); }
-  .topbar nav a:hover, .topbar nav a.is-active { background: #ffffff0c; color: var(--cream); }
-  .nav-label-full { display: inline; }
-  .nav-label-compact { display: none; }
-  .topbar-actions > .language-menu { display: none; }
-  .topbar nav .nav-language + .nav-language { margin-top: 0; }
-  .topbar nav .nav-language { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; padding: 10px 12px 4px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--text-label); }
   .wallet-button { padding: 9px 11px; }
   .wallet-menu summary { min-height: 40px; padding: 8px 10px; }
   .site-footer-inner { flex-wrap: wrap; justify-content: flex-start; padding-top: 18px; padding-bottom: 18px; }
@@ -506,6 +515,7 @@ a { color: inherit; }
 }
 @media (max-width: 420px) {
   .app-shell { padding-right: 16px; padding-left: 16px; }
+  .topbar nav { right: 16px; }
   .topbar { column-gap: 8px; }
   .brand { gap: 5px; }
   .brand-logo { width: 42px; height: 42px; }
