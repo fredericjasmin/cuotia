@@ -41,7 +41,7 @@ Cuotia es ahorro grupal (natilleras, tandas, cajas de ahorro) sobre Stellar: un 
 ## App
 
 - Textos en `lib/i18n.mjs`: español por defecto, inglés y francés. Cada clave nueva va en los tres idiomas.
-- Header responsive: por debajo de 1100 px, los links, la red y el idioma pasan al menú; por debajo de 620 px, también la billetera.
+- Header responsive: los links, la red y el idioma pasan al menú cuando la barra completa no entra en una línea (lo mide `components/use-nav-collapse.jsx`; depende del idioma y de la billetera, no hay un ancho fijo) y siempre por debajo de 760 px; por debajo de 620 px, también la billetera. Los links salen de una sola lista en `site-shell.jsx` (`navigation`, `walletLinks`): no duplicarlos.
 - Diseño: sin hovers que muevan o agranden elementos, sin eyebrows (etiquetas chicas arriba de los títulos), y el contenido alineado con los bordes del header y el footer (mismo contenedor `.app-shell`).
 
 ## Datos de la demo

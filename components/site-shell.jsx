@@ -10,10 +10,18 @@ import { WalletButtonSkeleton, WalletGateSkeleton } from './loading-skeletons.js
 import UiIcon from './ui-icon.jsx';
 import { useI18n } from './i18n-provider.jsx';
 import { LOCALES } from '../lib/i18n.mjs';
+import { PHONE_MAX, useNavCollapse } from './use-nav-collapse.jsx';
 
+// Única fuente de los links: la usan la barra, el menú y el footer. No dupliques listas.
 const navigation = [
   { href: '/savings', label: 'nav.savings', compact: 'nav.savingsCompact' },
   { href: '/how-it-works', label: 'nav.how', compact: 'nav.howCompact' },
+];
+
+// Links de la billetera conectada: los mismos en el menú de la billetera y en el menú del teléfono.
+const walletLinks = [
+  { href: '/dashboard', label: 'shell.dashboard' },
+  { href: '/savings/create', label: 'shell.createCircle' },
 ];
 
 // Inline SVG flags: emoji flags do not render on Windows.
@@ -128,6 +136,7 @@ export default function SiteShell({ children }) {
   const mobileMenuButtonRef = useRef(null);
   const mobileNavigationRef = useRef(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [topbarRef, compact] = useNavCollapse();
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -175,20 +184,18 @@ export default function SiteShell({ children }) {
       mobileMenuButtonRef.current?.focus();
     }
 
-    const desktopViewport = window.matchMedia('(min-width: 1101px)');
-    const closeOnDesktop = () => {
-      if (desktopViewport.matches) setMobileMenuOpen(false);
-    };
-
     document.addEventListener('pointerdown', closeOnOutsideClick);
     document.addEventListener('keydown', closeOnEscape);
-    desktopViewport.addEventListener('change', closeOnDesktop);
     return () => {
       document.removeEventListener('pointerdown', closeOnOutsideClick);
       document.removeEventListener('keydown', closeOnEscape);
-      desktopViewport.removeEventListener('change', closeOnDesktop);
     };
   }, [mobileMenuOpen]);
+
+  // Si la barra completa vuelve a entrar, el menú se cierra.
+  useEffect(() => {
+    if (!compact && window.innerWidth > PHONE_MAX) setMobileMenuOpen(false);
+  }, [compact]);
 
   async function toggleWallet() {
     if (walletAddress) await disconnectWallet();
@@ -200,7 +207,7 @@ export default function SiteShell({ children }) {
   }
 
   return <div className="site-layout">
-    <header className="site-header"><div className="topbar app-shell">
+    <header className="site-header"><div ref={topbarRef} className={`topbar app-shell${compact ? ' is-compact' : ''}`}>
       <Link className="brand" href="/" aria-label={t('shell.homeAria')}><Image className="brand-logo" src="/brand-nav.png" alt="" width={512} height={512} /><span className="brand-label">Cuotia<span className="brand-dot">.</span></span></Link>
       <button
         ref={mobileMenuButtonRef}
@@ -211,14 +218,13 @@ export default function SiteShell({ children }) {
         aria-controls="main-navigation"
         onClick={() => setMobileMenuOpen((open) => !open)}
       ><UiIcon as={mobileMenuOpen ? X : Menu} size={20} /></button>
-      <nav id="main-navigation" ref={mobileNavigationRef} className={mobileMenuOpen ? 'mobile-open' : ''} aria-label={t('shell.mainNav')}>{navigation.map(({ href, label, compact }) => {
+      <nav id="main-navigation" ref={mobileNavigationRef} className={mobileMenuOpen ? 'mobile-open' : ''} aria-label={t('shell.mainNav')}>{navigation.map(({ href, label, compact: compactLabel }) => {
         const active = pathname === href || (href !== '/' && pathname.startsWith(`${href}/`));
-        return <Link key={href} aria-current={active ? 'page' : undefined} className={active ? 'is-active' : ''} href={href} onClick={() => setMobileMenuOpen(false)}><span className="nav-label-full">{t(label)}</span><span className="nav-label-compact">{t(compact)}</span></Link>;
+        return <Link key={href} aria-current={active ? 'page' : undefined} className={active ? 'is-active' : ''} href={href} onClick={() => setMobileMenuOpen(false)}><span className="nav-label-full">{t(label)}</span><span className="nav-label-compact">{t(compactLabel)}</span></Link>;
       })}<div className="nav-language"><span>{t('lang.label')}</span><LanguageSwitch /></div><div className="nav-language"><span>{t('network.title')}</span><NetworkSwitch /></div>{walletReady && <div className="nav-wallet">
         {walletAddress ? <>
           <p className="nav-wallet-address"><span className="wallet-status-dot" aria-hidden="true" />{shortAddress(walletAddress)}</p>
-          <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)}>{t('shell.dashboard')}</Link>
-          <Link href="/savings/create" onClick={() => setMobileMenuOpen(false)}>{t('shell.createCircle')}</Link>
+          {walletLinks.map(({ href, label }) => <Link key={href} href={href} onClick={() => setMobileMenuOpen(false)}>{t(label)}</Link>)}
           <button type="button" className="nav-wallet-disconnect" onClick={() => { setMobileMenuOpen(false); disconnectWallet(); }}>{t('shell.disconnect')}</button>
         </> : <>
           <button type="button" className="button-primary" disabled={walletBusy} onClick={() => { setMobileMenuOpen(false); connectWallet().catch(() => {}); }}>{walletBusy ? t('wallet.connecting') : t('wallet.browser')}</button>
@@ -227,7 +233,7 @@ export default function SiteShell({ children }) {
       </div>}</nav>
       <div className="topbar-actions"><NetworkSwitch /><LanguageSwitch />{!walletReady ? <WalletButtonSkeleton /> : walletAddress ? <details className="wallet-menu" ref={walletMenuRef}>
         <summary className="wallet-button connected"><span className="wallet-status-dot" aria-hidden="true" />{shortAddress(walletAddress)}<UiIcon as={ChevronDown} className="wallet-menu-chevron" size={14} /></summary>
-      <div className="wallet-menu-popover"><p className="wallet-menu-network">Stellar Testnet</p><Link href="/dashboard" onClick={closeWalletMenu}>{t('shell.dashboard')}</Link><Link href="/savings/create" onClick={closeWalletMenu}>{t('shell.createCircle')}</Link><button type="button" onClick={disconnectWallet}>{t('shell.disconnect')}</button></div>
+      <div className="wallet-menu-popover"><p className="wallet-menu-network">Stellar Testnet</p>{walletLinks.map(({ href, label }) => <Link key={href} href={href} onClick={closeWalletMenu}>{t(label)}</Link>)}<button type="button" onClick={disconnectWallet}>{t('shell.disconnect')}</button></div>
       </details> : <details className="wallet-menu connect-wallet-menu" ref={walletMenuRef}>
         <summary className="wallet-button">{walletBusy ? t('wallet.connecting') : t('wallet.connect')}<UiIcon as={ChevronDown} className="wallet-menu-chevron" size={14} /></summary>
         <div className="wallet-menu-popover">
@@ -237,7 +243,7 @@ export default function SiteShell({ children }) {
       </details>}</div>
     </div></header>
     <main className="page-main app-shell">{walletRequired && !walletReady ? <WalletGateSkeleton /> : walletRequired && !walletAddress ? <section className="page-state wallet-gate"><span className="empty-symbol"><UiIcon as={Wallet} size={34} /></span><h1>{t('gate.title')}</h1><p>{t('gate.body')}</p><button className="button-primary" disabled={walletBusy} onClick={() => connectWallet().catch(() => {})}>{walletBusy ? t('wallet.connecting') : t('wallet.browser')}</button>{cavosEnabled && <button className="button-secondary" disabled={walletBusy} onClick={() => connectCavosWallet().catch(() => {})}>{t('wallet.cavos')}</button>}<Link className="button-quiet" href="/savings">{t('gate.back')}</Link></section> : children}</main>
-    <footer className="site-footer"><div className="site-footer-inner app-shell"><Link className="brand footer-brand" href="/" aria-label={t('shell.homeAria')}><Image className="brand-logo" src="/brand-mark.png" alt="" width={512} height={512} /></Link><p>{t('shell.footerNote')}</p><div><Link href="/how-it-works">{t('nav.how')}</Link><Link href="/savings">{t('nav.savings')}</Link></div></div></footer>
+    <footer className="site-footer"><div className="site-footer-inner app-shell"><Link className="brand footer-brand" href="/" aria-label={t('shell.homeAria')}><Image className="brand-logo" src="/brand-mark.png" alt="" width={512} height={512} /></Link><p>{t('shell.footerNote')}</p><div>{navigation.map(({ href, label }) => <Link key={href} href={href}>{t(label)}</Link>)}</div></div></footer>
     {toast && <div className="toast-viewport" aria-live={toast.type === 'error' ? 'assertive' : 'polite'}>
       <div className={`toast-card toast-${toast.type}`} role={toast.type === 'error' ? 'alert' : 'status'} key={toast.id}>
         <span className="toast-mark"><UiIcon as={toast.type === 'error' ? CircleAlert : toast.type === 'info' ? Info : CheckCircle2} size={19} /></span>
